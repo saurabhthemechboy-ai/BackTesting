@@ -11,7 +11,7 @@ from kiteconnect import KiteConnect
 app = Flask(__name__)
 
 # ==========================================
-# ZERODHA CREDENTIALS
+# ZERODHA API
 # ==========================================
 
 API_KEY = os.getenv(
@@ -53,7 +53,7 @@ def home():
         )
 
         # ==========================================
-        # FETCH HISTORICAL DATA
+        # FETCH DATA
         # ==========================================
 
         to_date = datetime.now()
@@ -111,7 +111,7 @@ def home():
         ]
 
         # ==========================================
-        # EMA CALCULATION
+        # EMA
         # ==========================================
 
         df["EMA9"] = df[
@@ -133,7 +133,7 @@ def home():
         )
 
         # ==========================================
-        # BACKTEST ENGINE
+        # BACKTEST VARIABLES
         # ==========================================
 
         position = None
@@ -148,6 +148,10 @@ def home():
 
         trades = []
 
+        # ==========================================
+        # MAIN LOOP
+        # ==========================================
+
         for i in range(1, len(df)):
 
             prev = df.iloc[i - 1]
@@ -160,13 +164,13 @@ def home():
 
             buy_signal = (
 
-                curr["EMA21"]
-                > curr["EMA9"]
+                curr["EMA9"]
+                > curr["EMA21"]
 
                 and
 
-                prev["EMA21"]
-                <= prev["EMA9"]
+                prev["EMA9"]
+                <= prev["EMA21"]
 
                 and
 
@@ -182,13 +186,13 @@ def home():
 
             sell_signal = (
 
-                curr["EMA21"]
-                < curr["EMA9"]
+                curr["EMA9"]
+                < curr["EMA21"]
 
                 and
 
-                prev["EMA21"]
-                >= prev["EMA9"]
+                prev["EMA9"]
+                >= prev["EMA21"]
 
                 and
 
@@ -199,7 +203,7 @@ def home():
             )
 
             # ==========================================
-            # ENTRY CONDITIONS
+            # FIRST ENTRY
             # ==========================================
 
             if position is None:
@@ -237,7 +241,7 @@ def home():
                     ]
 
             # ==========================================
-            # BUY TRADE MANAGEMENT
+            # BUY TRADE
             # ==========================================
 
             elif position == "BUY":
@@ -252,11 +256,17 @@ def home():
                     - trail_points
                 )
 
-                if (
-                    sell_signal
-                    or
+                sl_hit = (
                     curr["close"]
                     < trailing_stop
+                )
+
+                crossover_exit = sell_signal
+
+                if (
+                    sl_hit
+                    or
+                    crossover_exit
                 ):
 
                     exit_price = curr[
@@ -277,7 +287,7 @@ def home():
                     ) * 100
 
                     # ==========================================
-                    # OPTION PREMIUM SIMULATION
+                    # OPTION PREMIUM
                     # ==========================================
 
                     option_entry = round(
@@ -291,7 +301,7 @@ def home():
                     )
 
                     # ==========================================
-                    # FIXED STOP LOSS
+                    # FIXED OPTION SL
                     # ==========================================
 
                     max_loss = (
@@ -361,27 +371,41 @@ def home():
                         round(
                             real_pnl,
                             2
-                        )
+                        ),
+
+                        "exit_reason":
+                        "SL HIT"
+                        if sl_hit
+                        else
+                        "EMA EXIT"
                     })
 
-                    # REVERSE POSITION
+                    # ==========================================
+                    # REVERSE ONLY ON SL HIT
+                    # ==========================================
 
-                    position = "SELL"
+                    if sl_hit:
 
-                    entry_price = curr[
-                        "close"
-                    ]
+                        position = "SELL"
 
-                    entry_time = curr[
-                        "date"
-                    ]
+                        entry_price = curr[
+                            "close"
+                        ]
 
-                    highest_price = curr[
-                        "close"
-                    ]
+                        entry_time = curr[
+                            "date"
+                        ]
+
+                        highest_price = curr[
+                            "close"
+                        ]
+
+                    else:
+
+                        position = None
 
             # ==========================================
-            # SELL TRADE MANAGEMENT
+            # SELL TRADE
             # ==========================================
 
             elif position == "SELL":
@@ -396,11 +420,17 @@ def home():
                     + trail_points
                 )
 
-                if (
-                    buy_signal
-                    or
+                sl_hit = (
                     curr["close"]
                     > trailing_stop
+                )
+
+                crossover_exit = buy_signal
+
+                if (
+                    sl_hit
+                    or
+                    crossover_exit
                 ):
 
                     exit_price = curr[
@@ -431,7 +461,7 @@ def home():
                     )
 
                     # ==========================================
-                    # FIXED STOP LOSS
+                    # FIXED OPTION SL
                     # ==========================================
 
                     max_loss = (
@@ -501,27 +531,41 @@ def home():
                         round(
                             real_pnl,
                             2
-                        )
+                        ),
+
+                        "exit_reason":
+                        "SL HIT"
+                        if sl_hit
+                        else
+                        "EMA EXIT"
                     })
 
-                    # REVERSE POSITION
+                    # ==========================================
+                    # REVERSE ONLY ON SL HIT
+                    # ==========================================
 
-                    position = "BUY"
+                    if sl_hit:
 
-                    entry_price = curr[
-                        "close"
-                    ]
+                        position = "BUY"
 
-                    entry_time = curr[
-                        "date"
-                    ]
+                        entry_price = curr[
+                            "close"
+                        ]
 
-                    highest_price = curr[
-                        "close"
-                    ]
+                        entry_time = curr[
+                            "date"
+                        ]
+
+                        highest_price = curr[
+                            "close"
+                        ]
+
+                    else:
+
+                        position = None
 
         # ==========================================
-        # RESULTS DATAFRAME
+        # RESULTS
         # ==========================================
 
         trades_df = pd.DataFrame(
@@ -533,7 +577,7 @@ def home():
             return "<h2>No Trades Generated</h2>"
 
         # ==========================================
-        # REMOVE TIMEZONE FOR EXCEL
+        # REMOVE TIMEZONE
         # ==========================================
 
         trades_df["entry_time"] = pd.to_datetime(
@@ -545,7 +589,7 @@ def home():
         ).dt.tz_localize(None)
 
         # ==========================================
-        # RESULT ANALYSIS
+        # PERFORMANCE
         # ==========================================
 
         trades_df["result"] = trades_df[
@@ -585,7 +629,7 @@ def home():
         ) * 100
 
         # ==========================================
-        # EXPORT EXCEL
+        # EXCEL EXPORT
         # ==========================================
 
         excel_file = (
@@ -598,7 +642,7 @@ def home():
         )
 
         # ==========================================
-        # HTML REPORT
+        # REPORT
         # ==========================================
 
         return f"""
@@ -619,35 +663,17 @@ def home():
 
         <hr>
 
-        <p>
-        <b>User:</b>
-        {user_name}
-        </p>
+        <p><b>User:</b> {user_name}</p>
 
-        <p>
-        <b>Total Trades:</b>
-        {total_trades}
-        </p>
+        <p><b>Total Trades:</b> {total_trades}</p>
 
-        <p>
-        <b>Winning Trades:</b>
-        {wins}
-        </p>
+        <p><b>Winning Trades:</b> {wins}</p>
 
-        <p>
-        <b>Losing Trades:</b>
-        {losses}
-        </p>
+        <p><b>Losing Trades:</b> {losses}</p>
 
-        <p>
-        <b>Win Rate:</b>
-        {win_rate:.2f}%
-        </p>
+        <p><b>Win Rate:</b> {win_rate:.2f}%</p>
 
-        <p>
-        <b>Total Option PnL:</b>
-        ₹ {round(total_pnl, 2)}
-        </p>
+        <p><b>Total Option PnL:</b> ₹ {round(total_pnl, 2)}</p>
 
         <hr>
 
@@ -685,7 +711,7 @@ def home():
 
 
 # ==========================================
-# DOWNLOAD EXCEL
+# DOWNLOAD ROUTE
 # ==========================================
 
 @app.route("/download")
@@ -695,7 +721,6 @@ def download_file():
         "backtest_results.xlsx",
         as_attachment=True
     )
-
 
 # ==========================================
 # RUN APP
