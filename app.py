@@ -7,12 +7,16 @@ from kiteconnect import KiteConnect
 
 app = Flask(__name__)
 
-# =========================
+# ======================================
 # ENV VARIABLES
-# =========================
+# ======================================
 
-API_KEY = os.getenv("KITE_API_KEY")
-ACCESS_TOKEN = os.getenv("KITE_ACCESS_TOKEN")
+API_KEY = os.getenv("KITE_API_KEY", "").strip()
+
+ACCESS_TOKEN = os.getenv(
+    "KITE_ACCESS_TOKEN",
+    ""
+).strip()
 
 
 @app.route("/")
@@ -20,9 +24,21 @@ def home():
 
     try:
 
-        # =========================
+        # ======================================
+        # CHECK API DETAILS
+        # ======================================
+
+        if not API_KEY or not ACCESS_TOKEN:
+
+            return """
+            <h2 style='color:red;'>
+            Missing KITE_API_KEY or KITE_ACCESS_TOKEN
+            </h2>
+            """
+
+        # ======================================
         # CONNECT ZERODHA
-        # =========================
+        # ======================================
 
         kite = KiteConnect(api_key=API_KEY)
 
@@ -35,9 +51,9 @@ def home():
             "Trader"
         )
 
-        # =========================
-        # 7 DAYS DATA
-        # =========================
+        # ======================================
+        # FETCH 7 DAYS DATA
+        # ======================================
 
         to_date = datetime.now()
 
@@ -47,7 +63,7 @@ def home():
         )
 
         data = kite.historical_data(
-            instrument_token=256265,
+            instrument_token=256265,  # NIFTY
             from_date=from_date,
             to_date=to_date,
             interval="5minute"
@@ -56,12 +72,14 @@ def home():
         if not data:
 
             return """
-            <h2>No historical data received</h2>
+            <h2>
+            No historical data received
+            </h2>
             """
 
-        # =========================
+        # ======================================
         # DATAFRAME
-        # =========================
+        # ======================================
 
         df = pd.DataFrame(data)
 
@@ -69,23 +87,51 @@ def home():
             df["date"]
         )
 
-        # =========================
-        # EMA
-        # =========================
+        # ======================================
+        # MARKET TIME FILTER
+        # ======================================
 
-        df["EMA9"] = df["close"].ewm(
+        df["time"] = df[
+            "date"
+        ].dt.time
+
+        market_start = datetime.strptime(
+            "09:20",
+            "%H:%M"
+        ).time()
+
+        market_end = datetime.strptime(
+            "14:30",
+            "%H:%M"
+        ).time()
+
+        df = df[
+            (df["time"] >= market_start)
+            &
+            (df["time"] <= market_end)
+        ].copy()
+
+        # ======================================
+        # EMA
+        # ======================================
+
+        df["EMA9"] = df[
+            "close"
+        ].ewm(
             span=9,
             adjust=False
         ).mean()
 
-        df["EMA21"] = df["close"].ewm(
+        df["EMA21"] = df[
+            "close"
+        ].ewm(
             span=21,
             adjust=False
         ).mean()
 
-        # =========================
+        # ======================================
         # VWAP
-        # =========================
+        # ======================================
 
         df["date_only"] = (
             df["date"].dt.date
@@ -109,9 +155,17 @@ def home():
             / df["cum_volume"]
         )
 
-        # =========================
+        # ======================================
+        # DROP NAN
+        # ======================================
+
+        df = df.dropna().reset_index(
+            drop=True
+        )
+
+        # ======================================
         # BACKTEST ENGINE
-        # =========================
+        # ======================================
 
         position = None
 
@@ -131,7 +185,7 @@ def home():
 
             curr = df.iloc[i]
 
-            buy = (
+            buy_signal = (
 
                 prev["EMA9"]
                 < prev["EMA21"]
@@ -147,7 +201,7 @@ def home():
                 > curr["VWAP"]
             )
 
-            sell = (
+            sell_signal = (
 
                 prev["EMA9"]
                 > prev["EMA21"]
@@ -163,34 +217,36 @@ def home():
                 < curr["VWAP"]
             )
 
-            # =========================
             # ENTRY
-            # =========================
 
             if position is None:
 
-                if buy:
+                if buy_signal:
 
                     position = "BUY"
 
-                    entry_price = curr["close"]
+                    entry_price = curr[
+                        "close"
+                    ]
 
-                elif sell:
+                elif sell_signal:
 
                     position = "SELL"
 
-                    entry_price = curr["close"]
+                    entry_price = curr[
+                        "close"
+                    ]
 
-            # =========================
             # EXIT BUY
-            # =========================
 
             elif position == "BUY":
 
-                if sell:
+                if sell_signal:
 
                     pnl = (
+
                         curr["close"]
+
                         - entry_price
                     )
 
@@ -199,24 +255,29 @@ def home():
                     trades += 1
 
                     if pnl > 0:
+
                         wins += 1
+
                     else:
+
                         losses += 1
 
                     position = "SELL"
 
-                    entry_price = curr["close"]
+                    entry_price = curr[
+                        "close"
+                    ]
 
-            # =========================
             # EXIT SELL
-            # =========================
 
             elif position == "SELL":
 
-                if buy:
+                if buy_signal:
 
                     pnl = (
+
                         entry_price
+
                         - curr["close"]
                     )
 
@@ -225,34 +286,33 @@ def home():
                     trades += 1
 
                     if pnl > 0:
+
                         wins += 1
+
                     else:
+
                         losses += 1
 
                     position = "BUY"
 
-                    entry_price = curr["close"]
+                    entry_price = curr[
+                        "close"
+                    ]
 
-        # =========================
-        # WIN RATE
-        # =========================
+        # ======================================
+        # RESULTS
+        # ======================================
+
+        win_rate = 0
 
         if trades > 0:
 
             win_rate = (
-                wins
-                / trades
+                wins / trades
             ) * 100
 
-        else:
-
-            win_rate = 0
-
-        # =========================
-        # HTML OUTPUT
-        # =========================
-
         return f"""
+
         <div style="
         font-family:sans-serif;
         max-width:700px;
@@ -260,10 +320,11 @@ def home():
         padding:30px;
         border-radius:10px;
         box-shadow:0 0 10px #ddd;
+        background:white;
         ">
 
         <h1>
-        📊 BACKTEST REPORT
+        📊 NIFTY BACKTEST REPORT
         </h1>
 
         <hr>
@@ -274,22 +335,17 @@ def home():
         </p>
 
         <p>
-        <b>Total Candles:</b>
-        {len(df)}
-        </p>
-
-        <p>
         <b>Total Trades:</b>
         {trades}
         </p>
 
         <p>
-        <b>Wins:</b>
+        <b>Winning Trades:</b>
         {wins}
         </p>
 
         <p>
-        <b>Losses:</b>
+        <b>Losing Trades:</b>
         {losses}
         </p>
 
@@ -300,7 +356,7 @@ def home():
 
         <p>
         <b>Total PnL:</b>
-        {round(total_pnl,2)}
+        {round(total_pnl, 2)}
         </p>
 
         </div>
@@ -309,7 +365,7 @@ def home():
     except Exception as e:
 
         return f"""
-        <h2 style='color:red'>
+        <h2 style='color:red;'>
         ERROR
         </h2>
 
@@ -317,8 +373,5 @@ def home():
         """
 
 
-if __name__ == "__main__":
-    app.run()
-        """
 if __name__ == "__main__":
     app.run()
