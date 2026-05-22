@@ -7,79 +7,68 @@ import pandas as pd
 
 app = Flask(__name__)
 
-# Strip any accidental white spaces or quotes from Render's panel
 API_KEY = os.getenv("KITE_API_KEY", "").strip().replace('"', '').replace("'", "")
 ACCESS_TOKEN = os.getenv("KITE_ACCESS_TOKEN", "").strip().replace('"', '').replace("'", "")
 
 @app.route("/")
 def run_backtest_web():
     if not API_KEY or not ACCESS_TOKEN:
-        return f"""
-        <div style="font-family:sans-serif; padding:20px; color:#c0392b;">
-            <h3>❌ Configuration Error</h3>
-            <p>Render environment variables are empty or missing!</p>
-            <p><b>Detected API Key length:</b> {len(API_KEY)} characters</p>
-            <p><b>Detected Access Token length:</b> {len(ACCESS_TOKEN)} characters</p>
-        </div>
-        """
+        return "<h3>Setup Error: KITE_API_KEY or KITE_ACCESS_TOKEN environment variables are missing on Render!</h3>"
 
     try:
-        # Initialize client framework wrapper
         kite = KiteConnect(api_key=API_KEY)
         kite.set_access_token(ACCESS_TOKEN)
 
-        # PRE-FLIGHT AUTHENTICATION TEST
+        # 1. Profile Verification
         try:
             profile = kite.profile()
             user_name = profile.get("user_name", "Valued Trader")
         except Exception as auth_err:
-            return f"""
-            <div style="font-family:sans-serif; padding:30px; border:1px solid #f5c6cb; background-color:#f8d7da; color:#721c24; border-radius:5px; max-width:600px; margin:20px auto;">
-                <h3 style="margin-top:0;">❌ Zerodha Authentication Rejected</h3>
-                <p>Your <b>KITE_API_KEY</b> or <b>KITE_ACCESS_TOKEN</b> was rejected by Zerodha's login servers.</p>
-                <p><b>Error Details:</b> <code style="background:#fff; padding:2px 5px; border-radius:3px;">{auth_err}</code></p>
-                <hr style="border:0; border-top:1px solid #f5c6cb;">
-                <h4>💡 Debug Checklist:</h4>
-                <ol style="padding-left:20px;">
-                    <li>Did you reset your <b>API Secret</b> on the developer portal? If yes, your active access token was permanently killed. You must log in via your browser again to generate a new one.</li>
-                    <li>Double check that you didn't paste your <b>API Secret</b> inside the <b>API Key</b> slot on Render.</li>
-                    <li>Ensure your session token hasn't expired.</li>
-                </ol>
-            </div>
-            """
+            return f"<h3>Authentication Rejection: {auth_err}</h3><p>Your access token has expired or is invalid.</p>"
 
-        # Calculate time windows dynamically
+        # 2. Dynamic Date Range (Last 365 Days)
         final_end_date = datetime.now().date()
         final_start_date = final_end_date - timedelta(days=365)
 
+        # 3. Dynamic Instrument Token Lookup
+        # We will try both common SENSEX tokens (265 or 265041) to ensure data delivery
+        target_tokens = [265, 265041]
         all_chunks = []
-        current_start = final_start_date
+        successful_token = None
 
-        # Sequential Data Fetching Loop
-        while current_start < final_end_date:
-            current_end = min(current_start + timedelta(days=90), final_end_date)
-            str_start = current_start.strftime("%Y-%m-%d")
-            str_end = current_end.strftime("%Y-%m-%d")
+        for token in target_tokens:
+            all_chunks = []
+            current_start = final_start_date
             
-            try:
-                # Ordered positional arguments targeting SENSEX (Token: 265)
-                data = kite.historical_data(265, str_start, str_end, "5minute")
-                if data:
-                    all_chunks.extend(data)
-                time.sleep(0.6)
-            except Exception as loop_error:
-                return f"""
-                <div style="font-family:sans-serif; padding:20px;">
-                    <h3>⚠️ Account Active but Data Fetch Rejected</h3>
-                    <p>Logged in successfully as <b>{user_name}</b>, but historical charts were blocked.</p>
-                    <p><b>Reason:</b> <span style="color:red;">{loop_error}</span></p>
-                    <p><i>Note: If it says 'insufficient permission', you need to renew your base ₹500 plan or clear your app cache.</i></p>
-                </div>
-                """
-            current_start = current_end + timedelta(days=1)
+            while current_start < final_end_date:
+                current_end = min(current_start + timedelta(days=90), final_end_date)
+                str_start = current_start.strftime("%Y-%m-%d")
+                str_end = current_end.strftime("%Y-%m-%d")
+                
+                try:
+                    data = kite.historical_data(token, str_start, str_end, "5minute")
+                    if data:
+                        all_chunks.extend(data)
+                    time.sleep(0.5)
+                except Exception:
+                    break # Skip to next token if this one errors out
+                
+                current_start = current_end + timedelta(days=1)
+            
+            if all_chunks:
+                successful_token = token
+                break
 
         if not all_chunks:
-            return "<h3>Error: Zerodha servers returned an empty dataset block.</h3>"
+            return f"""
+            <div style="font-family:sans-serif; padding:30px; border:1px solid #ffeeba; background-color:#fff3cd; color:#856404; border-radius:5px; max-width:600px; margin:20px auto;">
+                <h3 style="margin-top:0;">⚠️ No Data Available</h3>
+                <p>Logged in successfully as <b>{user_name}</b>, but Zerodha returned 0 historical candles for SENSEX.</p>
+                <p><b>This happens because:</b> your Zerodha Developer account does not have active <b>Historical Data</b> permissions enabled for this month.</p>
+                <hr style="border:0; border-top:1px solid #ffeeba;">
+                <p style="font-size:13px; margin-bottom:0;">Go to <a href="https://developers.kite.trade/" target="_blank">developers.kite.trade</a>, check your app subscription, and make sure it doesn't say 'Expired'.</p>
+            </div>
+            """
 
         # --- DATA PROCESSING FRAMEWORK ---
         df = pd.DataFrame(all_chunks)
@@ -97,6 +86,7 @@ def run_backtest_web():
         df["vol_price"] = df["close"] * df["volume"]
         df["cum_volume"] = df.groupby("date_only")["volume"].cumsum()
         df["cum_vol_price"] = df.groupby("date_only")["vol_price"].cumsum()
+        
         df["VWAP"] = df["cum_vol_price"] / df["cum_volume"]
         df["VWAP"] = df["VWAP"].fillna(df["close"]) 
         
@@ -152,6 +142,7 @@ def run_backtest_web():
                 <h2 style="color: #2c3e50; text-align: center;">📊 SENSEX 1-Year Backtest Results</h2>
                 <hr style="border: 0; border-top: 1px solid #eee;">
                 <p style="font-size: 16px;"><b>Trader Account profile:</b> {user_name}</p>
+                <p style="font-size: 16px;"><b>Instrument Token Used:</b> {successful_token}</p>
                 <p style="font-size: 16px;"><b>Backtest Period:</b> {final_start_date} to {final_end_date}</p>
                 <p style="font-size: 16px;"><b>Total Trades Executed:</b> {total_trades}</p>
                 <p style="font-size: 16px;"><b>Winning Trades:</b> {winning_trades}</p>
@@ -161,7 +152,7 @@ def run_backtest_web():
                 </h3>
             </div>
             """
-        return f"<h3>Execution completed for {user_name}, but zero strategy signals were triggered.</h3>"
+        return f"<h3>Execution completed for {user_name}, but zero strategy signals were triggered on token {successful_token}.</h3>"
 
     except Exception as global_err:
         return f"<h3>Critical Application Crash: {global_err}</h3>"
