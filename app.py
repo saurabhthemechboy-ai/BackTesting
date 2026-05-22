@@ -7,10 +7,6 @@ from kiteconnect import KiteConnect
 
 app = Flask(__name__)
 
-# ======================================
-# ENV VARIABLES
-# ======================================
-
 API_KEY = os.getenv("KITE_API_KEY", "").strip()
 
 ACCESS_TOKEN = os.getenv(
@@ -24,25 +20,13 @@ def home():
 
     try:
 
-        # ======================================
-        # CHECK API DETAILS
-        # ======================================
+        kite = KiteConnect(
+            api_key=API_KEY
+        )
 
-        if not API_KEY or not ACCESS_TOKEN:
-
-            return """
-            <h2 style='color:red;'>
-            Missing KITE_API_KEY or KITE_ACCESS_TOKEN
-            </h2>
-            """
-
-        # ======================================
-        # CONNECT ZERODHA
-        # ======================================
-
-        kite = KiteConnect(api_key=API_KEY)
-
-        kite.set_access_token(ACCESS_TOKEN)
+        kite.set_access_token(
+            ACCESS_TOKEN
+        )
 
         profile = kite.profile()
 
@@ -51,19 +35,17 @@ def home():
             "Trader"
         )
 
-        # ======================================
-        # FETCH 7 DAYS DATA
-        # ======================================
+        # 30 DAYS DATA
 
         to_date = datetime.now()
 
         from_date = (
             to_date
-            - timedelta(days=90)
+            - timedelta(days=30)
         )
 
         data = kite.historical_data(
-            instrument_token=265,  # SENSEX
+            instrument_token=265,
             from_date=from_date,
             to_date=to_date,
             interval="5minute"
@@ -71,52 +53,17 @@ def home():
 
         if not data:
 
-            return """
-            <h2>
-            No historical data received
-            </h2>
-            """
+            return "No data received"
 
-        # ======================================
         # DATAFRAME
-        # ======================================
 
         df = pd.DataFrame(data)
-        print(df.head())
-        print(df.tail())
-        print(df.columns)
 
         df["date"] = pd.to_datetime(
             df["date"]
         )
 
-        # ======================================
-        # MARKET TIME FILTER
-        # ======================================
-
-        df["time"] = df[
-            "date"
-        ].dt.time
-
-        market_start = datetime.strptime(
-            "09:20",
-            "%H:%M"
-        ).time()
-
-        market_end = datetime.strptime(
-            "14:30",
-            "%H:%M"
-        ).time()
-
-        df = df[
-            (df["time"] >= market_start)
-            &
-            (df["time"] <= market_end)
-        ].copy()
-
-        # ======================================
         # EMA
-        # ======================================
 
         df["EMA9"] = df[
             "close"
@@ -132,23 +79,11 @@ def home():
             adjust=False
         ).mean()
 
-        # ======================================
-        # VWAP
-        # ======================================
-
-
-
-        # ======================================
-        # DROP NAN
-        # ======================================
-
         df = df.dropna().reset_index(
             drop=True
         )
 
-        # ======================================
-        # BACKTEST ENGINE
-        # ======================================
+        # DEBUG SIGNALS
 
         signals = []
 
@@ -159,57 +94,81 @@ def home():
             curr = df.iloc[i]
 
             buy_signal = (
-                curr["EMA9"] > curr["EMA21"]
+
+                curr["EMA9"]
+                > curr["EMA21"]
+
                 and
-                prev["EMA9"] <= prev["EMA21"]
-            )    
+
+                prev["EMA9"]
+                <= prev["EMA21"]
+            )
 
             sell_signal = (
-                curr["EMA9"] < curr["EMA21"]
+
+                curr["EMA9"]
+                < curr["EMA21"]
+
                 and
-                prev["EMA9"] >= prev["EMA21"]
+
+                prev["EMA9"]
+                >= prev["EMA21"]
             )
 
             if buy_signal:
 
                 signals.append(
                     f"""
-                    BUY at
-                    {curr['close']}
-                    Time:
-                    {curr['date']}
-                    """
+BUY at {curr['close']}
+Time: {curr['date']}
+"""
                 )
 
             if sell_signal:
 
                 signals.append(
                     f"""
-                    SELL at
-                    {curr['close']}
-                    Time:
-                    {curr['date']}
-                    """
+SELL at {curr['close']}
+Time: {curr['date']}
+"""
                 )
 
-# RESULTS
-    
-return f"""
+        return f"""
 
-<h1>
-DEBUG SIGNALS
-</h1>
+        <h1>
+        EMA CROSSOVER DEBUG
+        </h1>
 
-<p>
-Total Signals:
-{len(signals)}
-</p>
+        <p>
+        User:
+        {user_name}
+        </p>
 
-<pre>
-{signals[:20]}
-</pre>
+        <p>
+        Total Signals:
+        {len(signals)}
+        </p>
 
-"""
+        <pre>
+        {signals[:20]}
+        </pre>
+
+        """
+
+    except Exception as e:
+
+        return f"""
+
+        <h1>
+        ERROR
+        </h1>
+
+        <pre>
+        {str(e)}
+        </pre>
+
+        """
+
 
 if __name__ == "__main__":
     app.run()
