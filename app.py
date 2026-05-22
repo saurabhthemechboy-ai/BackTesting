@@ -159,6 +159,21 @@ def home():
             curr = df.iloc[i]
 
             # ==========================================
+            # NO NEW TRADE AFTER 2:45 PM
+            # ==========================================
+
+            current_time = curr["date"].time()
+
+            cutoff_time = datetime.strptime(
+                "14:45",
+                "%H:%M"
+            ).time()
+
+            allow_new_trade = (
+                current_time < cutoff_time
+            )
+
+            # ==========================================
             # BUY SIGNAL
             # ==========================================
 
@@ -206,7 +221,11 @@ def home():
             # FIRST ENTRY
             # ==========================================
 
-            if position is None:
+            if (
+                position is None
+                and
+                allow_new_trade
+            ):
 
                 if buy_signal:
 
