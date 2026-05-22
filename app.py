@@ -51,29 +51,120 @@ def home():
             adjust=False
         ).mean()
 
-        # SIGNALS
-        trades = 0
+        # VWAP
 
-        for i in range(1, len(df)):
+df["date_only"] = df["date"].dt.date
 
-            prev = df.iloc[i - 1]
+df["vol_price"] = (
+    df["close"] * df["volume"]
+)
 
-            curr = df.iloc[i]
+df["cum_volume"] = df.groupby(
+    "date_only"
+)["volume"].cumsum()
 
-            buy = (
-                prev["EMA9"] < prev["EMA21"]
-                and
-                curr["EMA9"] > curr["EMA21"]
+df["cum_vol_price"] = df.groupby(
+    "date_only"
+)["vol_price"].cumsum()
+
+df["VWAP"] = (
+    df["cum_vol_price"]
+    / df["cum_volume"]
+)
+
+# BACKTEST ENGINE
+
+position = None
+
+entry_price = 0
+
+total_pnl = 0
+
+wins = 0
+
+losses = 0
+
+trades = 0
+
+for i in range(1, len(df)):
+
+    prev = df.iloc[i - 1]
+
+    curr = df.iloc[i]
+
+    buy = (
+        prev["EMA9"] < prev["EMA21"]
+        and
+        curr["EMA9"] > curr["EMA21"]
+        and
+        curr["close"] > curr["VWAP"]
+    )
+
+    sell = (
+        prev["EMA9"] > prev["EMA21"]
+        and
+        curr["EMA9"] < curr["EMA21"]
+        and
+        curr["close"] < curr["VWAP"]
+    )
+
+    if position is None:
+
+        if buy:
+
+            position = "BUY"
+
+            entry_price = curr["close"]
+
+        elif sell:
+
+            position = "SELL"
+
+            entry_price = curr["close"]
+
+    elif position == "BUY":
+
+        if sell:
+
+            pnl = (
+                curr["close"]
+                - entry_price
             )
 
-            sell = (
-                prev["EMA9"] > prev["EMA21"]
-                and
-                curr["EMA9"] < curr["EMA21"]
+            total_pnl += pnl
+
+            trades += 1
+
+            if pnl > 0:
+                wins += 1
+            else:
+                losses += 1
+
+            position = "SELL"
+
+            entry_price = curr["close"]
+
+    elif position == "SELL":
+
+        if buy:
+
+            pnl = (
+                entry_price
+                - curr["close"]
             )
 
-            if buy or sell:
-                trades += 1
+            total_pnl += pnl
+
+            trades += 1
+
+            if pnl > 0:
+                wins += 1
+            else:
+                losses += 1
+
+            position = "BUY"
+
+            entry_price = curr["close"]
 
         return f"""
         <h1>BACKTEST WORKING</h1>
@@ -82,7 +173,13 @@ def home():
 
         <p>Total Candles: {len(df)}</p>
 
-        <p>Total Signals: {trades}</p>
+        <p>Total Trades: {trades}</p>
+
+        <p>Wins: {wins}</p>
+
+        <p>Losses: {losses}</p>
+
+        <p>Total PnL: {round(total_pnl, 2)}</p>
         """
 
     except Exception as e:
