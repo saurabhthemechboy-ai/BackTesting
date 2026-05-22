@@ -194,11 +194,6 @@ def home():
 
                 curr["EMA9"]
                 > curr["EMA21"]
-
-                and
-
-                curr["close"]
-                > curr["VWAP"]
             )
 
             sell_signal = (
@@ -210,11 +205,6 @@ def home():
 
                 curr["EMA9"]
                 < curr["EMA21"]
-
-                and
-
-                curr["close"]
-                < curr["VWAP"]
             )
 
             # ENTRY
