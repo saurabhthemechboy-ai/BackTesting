@@ -59,7 +59,7 @@ def home():
 
         from_date = (
             to_date
-            - timedelta(days=7)
+            - timedelta(days=30)
         )
 
         data = kite.historical_data(
@@ -185,28 +185,32 @@ def home():
 
             curr = df.iloc[i]
 
+    # BUY CONDITION
+
             buy_signal = (
-
-                prev["EMA9"]
-                < prev["EMA21"]
-
-                and
 
                 curr["EMA9"]
                 > curr["EMA21"]
-            )
-
-            sell_signal = (
-
-                prev["EMA9"]
-                > prev["EMA21"]
 
                 and
 
-                curr["EMA9"]
-                < curr["EMA21"]
+                prev["EMA9"]
+                <= prev["EMA21"]
             )
 
+    # SELL CONDITION
+
+            sell_signal = (
+
+                curr["EMA9"]
+                < curr["EMA21"]
+
+                and
+
+                prev["EMA9"]
+                >= prev["EMA21"]
+            )
+        
             # ENTRY
 
             if position is None:
