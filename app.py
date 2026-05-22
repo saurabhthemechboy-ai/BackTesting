@@ -150,17 +150,7 @@ def home():
         # BACKTEST ENGINE
         # ======================================
 
-        position = None
-
-        entry_price = 0
-
-        total_pnl = 0
-
-        wins = 0
-
-        losses = 0
-
-        trades = 0
+        signals = []
 
         for i in range(1, len(df)):
 
@@ -168,114 +158,58 @@ def home():
 
             curr = df.iloc[i]
 
-    # BUY CONDITION
-
             buy_signal = (
-
-                curr["EMA9"]
-                > curr["EMA21"]
-
+                curr["EMA9"] > curr["EMA21"]
                 and
-
-                prev["EMA9"]
-                <= prev["EMA21"]
-            )
-
-    # SELL CONDITION
+                prev["EMA9"] <= prev["EMA21"]
+            )    
 
             sell_signal = (
-
-                curr["EMA9"]
-                < curr["EMA21"]
-
+                curr["EMA9"] < curr["EMA21"]
                 and
-
-                prev["EMA9"]
-                >= prev["EMA21"]
+                prev["EMA9"] >= prev["EMA21"]
             )
-        
-            # ENTRY
 
-            if position is None:
+            if buy_signal:
 
-                if buy_signal:
+                signals.append(
+                    f"""
+                    BUY at
+                    {curr['close']}
+                    Time:
+                    {curr['date']}
+                    """
+                )
 
-                    position = "BUY"
+            if sell_signal:
 
-                    entry_price = curr[
-                        "close"
-                    ]
+                signals.append(
+                    f"""
+                    SELL at
+                    {curr['close']}
+                    Time:
+                    {curr['date']}
+                    """
+                )
 
-                elif sell_signal:
+# RESULTS
+    
+return f"""
 
-                    position = "SELL"
+<h1>
+DEBUG SIGNALS
+</h1>
 
-                    entry_price = curr[
-                        "close"
-                    ]
+<p>
+Total Signals:
+{len(signals)}
+</p>
 
-            # EXIT BUY
+<pre>
+{signals[:20]}
+</pre>
 
-            elif position == "BUY":
-
-                if sell_signal:
-
-                    pnl = (
-
-                        curr["close"]
-
-                        - entry_price
-                    )
-
-                    total_pnl += pnl
-
-                    trades += 1
-
-                    if pnl > 0:
-
-                        wins += 1
-
-                    else:
-
-                        losses += 1
-
-                    position = "SELL"
-
-                    entry_price = curr[
-                        "close"
-                    ]
-
-            # EXIT SELL
-
-            elif position == "SELL":
-
-                if buy_signal:
-
-                    pnl = (
-
-                        entry_price
-
-                        - curr["close"]
-                    )
-
-                    total_pnl += pnl
-
-                    trades += 1
-
-                    if pnl > 0:
-
-                        wins += 1
-
-                    else:
-
-                        losses += 1
-
-                    position = "BUY"
-
-                    entry_price = curr[
-                        "close"
-                    ]
-
+"""
         # ======================================
         # RESULTS
         # ======================================
