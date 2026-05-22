@@ -1,5 +1,4 @@
 import os
-import time
 from datetime import datetime, timedelta
 
 from flask import Flask
@@ -8,189 +7,40 @@ from kiteconnect import KiteConnect
 
 app = Flask(__name__)
 
-# =========================================
-# ENV VARIABLES
-# =========================================
-
-API_KEY = os.getenv("KITE_API_KEY", "").strip()
-
-ACCESS_TOKEN = os.getenv(
-    "KITE_ACCESS_TOKEN",
-    ""
-).strip()
-
-# =========================================
-# HOME ROUTE
-# =========================================
+API_KEY = os.getenv("KITE_API_KEY")
+ACCESS_TOKEN = os.getenv("KITE_ACCESS_TOKEN")
 
 @app.route("/")
-def run_backtest():
-
-    # =========================================
-    # CHECK ENV VARIABLES
-    # =========================================
-
-    if not API_KEY or not ACCESS_TOKEN:
-
-        return """
-        <h2 style='color:red;'>
-        Missing KITE_API_KEY or KITE_ACCESS_TOKEN
-        </h2>
-        """
+def home():
 
     try:
-
-        # =========================================
-        # ZERODHA CONNECTION
-        # =========================================
 
         kite = KiteConnect(api_key=API_KEY)
 
         kite.set_access_token(ACCESS_TOKEN)
 
-        # =========================================
-        # VERIFY LOGIN
-        # =========================================
+        # TEST LOGIN
+        profile = kite.profile()
 
-        try:
+        # ONLY 7 DAYS DATA
+        to_date = datetime.now()
 
-            profile = kite.profile()
+        from_date = to_date - timedelta(days=7)
 
-            user_name = profile.get(
-                "user_name",
-                "Trader"
-            )
-
-        except Exception as auth_error:
-
-            return f"""
-            <h2 style='color:red;'>
-            Zerodha Authentication Failed
-            </h2>
-
-            <p>{auth_error}</p>
-
-            <p>
-            Your access token probably expired.
-            Generate a new token.
-            </p>
-            """
-
-        # =========================================
-        # DATE RANGE
-        # =========================================
-
-        final_end_date = (
-            datetime.now()
-            - timedelta(days=1)
+        data = kite.historical_data(
+            instrument_token=256265,
+            from_date=from_date,
+            to_date=to_date,
+            interval="5minute"
         )
 
-        final_start_date = (
-            final_end_date
-            - timedelta(days=90)
-        )
+        if not data:
 
-        # =========================================
-        # NIFTY TOKEN
-        # =========================================
+            return "No data received"
 
-        instrument_token = 256265
+        df = pd.DataFrame(data)
 
-        # =========================================
-        # DOWNLOAD DATA
-        # =========================================
-
-        all_data = []
-
-        current_start = final_start_date
-
-        while current_start < final_end_date:
-
-            current_end = min(
-                current_start + timedelta(days=30),
-                final_end_date
-            )
-
-            try:
-
-                data = kite.historical_data(
-
-                    instrument_token=instrument_token,
-
-                    from_date=current_start,
-
-                    to_date=current_end,
-
-                    interval="5minute"
-                )
-
-                if data:
-
-                    all_data.extend(data)
-
-                # API safety sleep
-                time.sleep(0.2)
-
-            except Exception as data_error:
-
-                return f"""
-                <h2 style='color:red;'>
-                Historical Data Error
-                </h2>
-
-                <p>{data_error}</p>
-
-                <p>
-                Failed between:
-                {current_start}
-                and
-                {current_end}
-                </p>
-                """
-
-            current_start = (
-                current_end
-                + timedelta(days=1)
-            )
-
-        # =========================================
-        # EMPTY DATA CHECK
-        # =========================================
-
-        if not all_data:
-
-            return """
-            <h2 style='color:red;'>
-            No historical data returned
-            </h2>
-
-            <p>
-            Check:
-            </p>
-
-            <ul>
-                <li>Historical subscription</li>
-                <li>Access token</li>
-                <li>Internet connection</li>
-            </ul>
-            """
-
-        # =========================================
-        # DATAFRAME
-        # =========================================
-
-        df = pd.DataFrame(all_data)
-
-        df["date"] = pd.to_datetime(df["date"])
-
-        df = df.sort_values(
-            "date"
-        ).reset_index(drop=True)
-
-        # =========================================
-        # EMA CALCULATIONS
-        # =========================================
-
+        # EMA
         df["EMA9"] = df["close"].ewm(
             span=9,
             adjust=False
@@ -201,467 +51,52 @@ def run_backtest():
             adjust=False
         ).mean()
 
-        # =========================================
-        # VWAP
-        # =========================================
-
-        df["date_only"] = df["date"].dt.date
-
-        df["vol_price"] = (
-            df["close"]
-            * df["volume"]
-        )
-
-        df["cum_volume"] = df.groupby(
-            "date_only"
-        )["volume"].cumsum()
-
-        df["cum_vol_price"] = df.groupby(
-            "date_only"
-        )["vol_price"].cumsum()
-
-        df["VWAP"] = (
-            df["cum_vol_price"]
-            / df["cum_volume"]
-        )
-
-        # =========================================
-        # PREVIOUS EMA VALUES
-        # =========================================
-
-        df["prev_EMA9"] = (
-            df["EMA9"].shift(1)
-        )
-
-        df["prev_EMA21"] = (
-            df["EMA21"].shift(1)
-        )
-
-        # =========================================
-        # REMOVE NaN
-        # =========================================
-
-        df = df.dropna().reset_index(drop=True)
-
-        # =========================================
-        # MARKET TIME FILTER
-        # =========================================
-
-        df["time"] = df["date"].dt.time
-
-        market_start = datetime.strptime(
-            "09:20",
-            "%H:%M"
-        ).time()
-
-        market_end = datetime.strptime(
-            "14:30",
-            "%H:%M"
-        ).time()
-
-        df = df[
-            (df["time"] >= market_start)
-            &
-            (df["time"] <= market_end)
-        ].copy()
-
-        # =========================================
-        # BACKTEST ENGINE
-        # =========================================
-
-        trades = []
-
-        current_position = None
-
-        entry_price = 0
-
-        entry_time = None
+        # SIGNALS
+        trades = 0
 
         for i in range(1, len(df)):
 
-            row = df.iloc[i]
+            prev = df.iloc[i - 1]
 
-            close = row["close"]
+            curr = df.iloc[i]
 
-            vwap = row["VWAP"]
-
-            ema9 = row["EMA9"]
-
-            ema21 = row["EMA21"]
-
-            p_ema9 = row["prev_EMA9"]
-
-            p_ema21 = row["prev_EMA21"]
-
-            # =========================================
-            # SIGNALS
-            # =========================================
-
-            buy_signal = (
-
-                p_ema9 < p_ema21
-
+            buy = (
+                prev["EMA9"] < prev["EMA21"]
                 and
-
-                ema9 > ema21
-
-                and
-
-                close > vwap
+                curr["EMA9"] > curr["EMA21"]
             )
 
-            sell_signal = (
-
-                p_ema9 > p_ema21
-
+            sell = (
+                prev["EMA9"] > prev["EMA21"]
                 and
-
-                ema9 < ema21
-
-                and
-
-                close < vwap
+                curr["EMA9"] < curr["EMA21"]
             )
 
-            # =========================================
-            # ENTRY
-            # =========================================
-
-            if current_position is None:
-
-                if buy_signal:
-
-                    current_position = "BUY"
-
-                    entry_price = close
-
-                    entry_time = row["date"]
-
-                elif sell_signal:
-
-                    current_position = "SELL"
-
-                    entry_price = close
-
-                    entry_time = row["date"]
-
-            # =========================================
-            # EXIT BUY
-            # =========================================
-
-            elif current_position == "BUY":
-
-                if sell_signal:
-
-                    exit_price = close
-
-                    pnl = (
-                        exit_price
-                        - entry_price
-                    )
-
-                    trades.append({
-
-                        "Type": "BUY",
-
-                        "Entry Time": entry_time,
-
-                        "Exit Time": row["date"],
-
-                        "Entry": round(
-                            entry_price,
-                            2
-                        ),
-
-                        "Exit": round(
-                            exit_price,
-                            2
-                        ),
-
-                        "PnL": round(
-                            pnl,
-                            2
-                        ),
-
-                        "Return %": round(
-                            (
-                                pnl
-                                / entry_price
-                            ) * 100,
-                            2
-                        )
-                    })
-
-                    current_position = "SELL"
-
-                    entry_price = close
-
-                    entry_time = row["date"]
-
-            # =========================================
-            # EXIT SELL
-            # =========================================
-
-            elif current_position == "SELL":
-
-                if buy_signal:
-
-                    exit_price = close
-
-                    pnl = (
-                        entry_price
-                        - exit_price
-                    )
-
-                    trades.append({
-
-                        "Type": "SELL",
-
-                        "Entry Time": entry_time,
-
-                        "Exit Time": row["date"],
-
-                        "Entry": round(
-                            entry_price,
-                            2
-                        ),
-
-                        "Exit": round(
-                            exit_price,
-                            2
-                        ),
-
-                        "PnL": round(
-                            pnl,
-                            2
-                        ),
-
-                        "Return %": round(
-                            (
-                                pnl
-                                / entry_price
-                            ) * 100,
-                            2
-                        )
-                    })
-
-                    current_position = "BUY"
-
-                    entry_price = close
-
-                    entry_time = row["date"]
-
-        # =========================================
-        # RESULTS DATAFRAME
-        # =========================================
-
-        trades_df = pd.DataFrame(trades)
-
-        if trades_df.empty:
-
-            return """
-            <h2>
-            No trades generated
-            </h2>
-            """
-
-        # =========================================
-        # PERFORMANCE METRICS
-        # =========================================
-
-        total_trades = len(trades_df)
-
-        wins = len(
-            trades_df[
-                trades_df["PnL"] > 0
-            ]
-        )
-
-        losses = len(
-            trades_df[
-                trades_df["PnL"] <= 0
-            ]
-        )
-
-        win_rate = (
-            wins / total_trades
-        ) * 100
-
-        total_pnl = trades_df[
-            "PnL"
-        ].sum()
-
-        total_return = trades_df[
-            "Return %"
-        ].fillna(0).sum()
-
-        avg_win = trades_df[
-            trades_df["PnL"] > 0
-        ]["PnL"].mean()
-
-        avg_loss = trades_df[
-            trades_df["PnL"] <= 0
-        ]["PnL"].mean()
-
-        # =========================================
-        # EQUITY CURVE
-        # =========================================
-
-        trades_df["Equity"] = (
-            trades_df["PnL"].cumsum()
-        )
-
-        trades_df["Peak"] = trades_df[
-            "Equity"
-        ].cummax()
-
-        trades_df["Drawdown"] = (
-
-            trades_df["Equity"]
-
-            -
-
-            trades_df["Peak"]
-        )
-
-        max_drawdown = trades_df[
-            "Drawdown"
-        ].min()
-
-        # =========================================
-        # PROFIT FACTOR SAFETY
-        # =========================================
-
-        gross_profit = trades_df[
-            trades_df["PnL"] > 0
-        ]["PnL"].sum()
-
-        gross_loss = abs(
-
-            trades_df[
-                trades_df["PnL"] < 0
-            ]["PnL"].sum()
-        )
-
-        if gross_loss == 0:
-
-            profit_factor = gross_profit
-
-        else:
-
-            profit_factor = (
-                gross_profit
-                / gross_loss
-            )
-
-        # =========================================
-        # HTML REPORT
-        # =========================================
+            if buy or sell:
+                trades += 1
 
         return f"""
+        <h1>BACKTEST WORKING</h1>
 
-        <div style="
-        font-family:sans-serif;
-        max-width:700px;
-        margin:auto;
-        padding:30px;
-        border-radius:10px;
-        box-shadow:0 0 10px #ddd;
-        background:white;
-        ">
+        <p>User: {profile['user_name']}</p>
 
-        <h1>
-        📊 NIFTY BACKTEST REPORT
-        </h1>
+        <p>Total Candles: {len(df)}</p>
 
-        <hr>
-
-        <p>
-        <b>User:</b>
-        {user_name}
-        </p>
-
-        <p>
-        <b>Period:</b>
-        {final_start_date.date()}
-        to
-        {final_end_date.date()}
-        </p>
-
-        <p>
-        <b>Total Trades:</b>
-        {total_trades}
-        </p>
-
-        <p>
-        <b>Winning Trades:</b>
-        {wins}
-        </p>
-
-        <p>
-        <b>Losing Trades:</b>
-        {losses}
-        </p>
-
-        <p>
-        <b>Win Rate:</b>
-        {win_rate:.2f}%
-        </p>
-
-        <p>
-        <b>Total PnL:</b>
-        {total_pnl:.2f}
-        </p>
-
-        <p>
-        <b>Total Return:</b>
-        {total_return:.2f}%
-        </p>
-
-        <p>
-        <b>Average Win:</b>
-        {avg_win:.2f}
-        </p>
-
-        <p>
-        <b>Average Loss:</b>
-        {avg_loss:.2f}
-        </p>
-
-        <p>
-        <b>Profit Factor:</b>
-        {profit_factor:.2f}
-        </p>
-
-        <p>
-        <b>Max Drawdown:</b>
-        {max_drawdown:.2f}
-        </p>
-
-        </div>
+        <p>Total Signals: {trades}</p>
         """
 
-    except Exception as global_error:
+    except Exception as e:
 
         return f"""
-        <h2 style='color:red;'>
-        Critical Error
-        </h2>
+        <h2>ERROR</h2>
 
-        <p>{global_error}</p>
+        <p>{str(e)}</p>
         """
-
-# =========================================
-# RUN APP
-# =========================================
 
 if __name__ == "__main__":
 
     port = int(
-        os.environ.get(
-            "PORT",
-            8080
-        )
+        os.environ.get("PORT", 8080)
     )
 
     app.run(
