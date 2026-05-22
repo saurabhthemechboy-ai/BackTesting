@@ -136,27 +136,7 @@ def home():
         # VWAP
         # ======================================
 
-        df["date_only"] = (
-            df["date"].dt.date
-        )
 
-        df["vol_price"] = (
-            df["close"]
-            * df["volume"]
-        )
-
-        df["cum_volume"] = df.groupby(
-            "date_only"
-        )["volume"].cumsum()
-
-        df["cum_vol_price"] = df.groupby(
-            "date_only"
-        )["vol_price"].cumsum()
-
-        df["VWAP"] = (
-            df["cum_vol_price"]
-            / df["cum_volume"]
-        )
 
         # ======================================
         # DROP NAN
