@@ -179,7 +179,7 @@ def home():
 
 # 4. Perform the check
             allow_new_trade = current_time < cutoff_time
-            )
+            
 
             # ==========================================
             # BUY SIGNAL
