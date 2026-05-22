@@ -2,7 +2,10 @@ import os
 from datetime import datetime, timedelta
 
 from flask import Flask
+from flask import send_file
+
 import pandas as pd
+
 from kiteconnect import KiteConnect
 
 app = Flask(__name__)
@@ -28,7 +31,7 @@ def home():
     try:
 
         # ==========================================
-        # CONNECT ZERODHA
+        # CONNECT TO ZERODHA
         # ==========================================
 
         kite = KiteConnect(
@@ -47,7 +50,7 @@ def home():
         )
 
         # ==========================================
-        # FETCH 30 DAYS DATA
+        # FETCH HISTORICAL DATA
         # ==========================================
 
         to_date = datetime.now()
@@ -112,6 +115,8 @@ def home():
 
         entry_price = 0
 
+        entry_time = None
+
         trades = []
 
         for i in range(1, len(df)):
@@ -160,12 +165,20 @@ def home():
                         "close"
                     ]
 
+                    entry_time = curr[
+                        "date"
+                    ]
+
                 elif sell_signal:
 
                     position = "SELL"
 
                     entry_price = curr[
                         "close"
+                    ]
+
+                    entry_time = curr[
+                        "date"
                     ]
 
             # ==========================================
@@ -180,6 +193,10 @@ def home():
                         "close"
                     ]
 
+                    exit_time = curr[
+                        "date"
+                    ]
+
                     pnl = (
                         exit_price
                         - entry_price
@@ -187,19 +204,29 @@ def home():
 
                     trades.append({
 
-                        "type": "BUY",
+                        "trade_type":
+                        "BUY",
 
-                        "entry": round(
+                        "entry_time":
+                        entry_time,
+
+                        "exit_time":
+                        exit_time,
+
+                        "entry_price":
+                        round(
                             entry_price,
                             2
                         ),
 
-                        "exit": round(
+                        "exit_price":
+                        round(
                             exit_price,
                             2
                         ),
 
-                        "pnl": round(
+                        "pnl":
+                        round(
                             pnl,
                             2
                         )
@@ -209,6 +236,10 @@ def home():
 
                     entry_price = curr[
                         "close"
+                    ]
+
+                    entry_time = curr[
+                        "date"
                     ]
 
             # ==========================================
@@ -223,6 +254,10 @@ def home():
                         "close"
                     ]
 
+                    exit_time = curr[
+                        "date"
+                    ]
+
                     pnl = (
                         entry_price
                         - exit_price
@@ -230,19 +265,29 @@ def home():
 
                     trades.append({
 
-                        "type": "SELL",
+                        "trade_type":
+                        "SELL",
 
-                        "entry": round(
+                        "entry_time":
+                        entry_time,
+
+                        "exit_time":
+                        exit_time,
+
+                        "entry_price":
+                        round(
                             entry_price,
                             2
                         ),
 
-                        "exit": round(
+                        "exit_price":
+                        round(
                             exit_price,
                             2
                         ),
 
-                        "pnl": round(
+                        "pnl":
+                        round(
                             pnl,
                             2
                         )
@@ -254,37 +299,78 @@ def home():
                         "close"
                     ]
 
+                    entry_time = curr[
+                        "date"
+                    ]
+
+        # ==========================================
+        # CREATE DATAFRAME
+        # ==========================================
+
+        trades_df = pd.DataFrame(
+            trades
+        )
+
+        if trades_df.empty:
+
+            return """
+            <h2>
+            No trades generated
+            </h2>
+            """
+
         # ==========================================
         # RESULTS
         # ==========================================
 
-        total_trades = len(
-            trades
+        trades_df["result"] = trades_df[
+            "pnl"
+        ].apply(
+            lambda x:
+            "WIN"
+            if x > 0
+            else "LOSS"
         )
 
-        wins = len([
-            t for t in trades
-            if t["pnl"] > 0
-        ])
+        trades_df["cumulative_pnl"] = trades_df[
+            "pnl"
+        ].cumsum()
+
+        total_trades = len(
+            trades_df
+        )
+
+        wins = len(
+            trades_df[
+                trades_df["pnl"] > 0
+            ]
+        )
 
         losses = (
             total_trades
             - wins
         )
 
-        total_pnl = sum([
-            t["pnl"]
-            for t in trades
-        ])
+        total_pnl = trades_df[
+            "pnl"
+        ].sum()
 
-        win_rate = 0
+        win_rate = (
+            wins / total_trades
+        ) * 100
 
-        if total_trades > 0:
+        # ==========================================
+        # EXPORT EXCEL
+        # ==========================================
 
-            win_rate = (
-                wins
-                / total_trades
-            ) * 100
+        excel_file = (
+            "backtest_results.xlsx"
+        )
+
+        trades_df.to_excel(
+            excel_file,
+            index=False
+        )
 
         # ==========================================
         # HTML REPORT
@@ -294,7 +380,7 @@ def home():
 
         <div style="
         font-family:sans-serif;
-        max-width:800px;
+        max-width:900px;
         margin:auto;
         padding:30px;
         background:white;
@@ -340,6 +426,12 @@ def home():
 
         <hr>
 
+        <a href="/download">
+        📥 Download Excel Report
+        </a>
+
+        <hr>
+
         <h3>
         Recent Trades
         </h3>
@@ -365,6 +457,15 @@ def home():
         </pre>
 
         """
+
+
+@app.route("/download")
+def download_file():
+
+    return send_file(
+        "backtest_results.xlsx",
+        as_attachment=True
+    )
 
 
 if __name__ == "__main__":
