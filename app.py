@@ -162,13 +162,10 @@ def home():
             # NO NEW TRADE AFTER 2:45 PM
             # ==========================================
 
+            cutoff_time = datetime.time(14, 45)
+
             current_time = curr["date"].time()
-
-            cutoff_time = datetime.strptime(
-                "14:45",
-                "%H:%M"
-            ).time()
-
+            
             allow_new_trade = (
                 current_time < cutoff_time
             )
