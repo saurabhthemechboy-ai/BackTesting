@@ -5,8 +5,8 @@ from kiteconnect import KiteConnect
 import pandas as pd
 
 # --- 1. SETUP KITE CLIENT ---
-API_KEY = os.getenv("KITE_API_KEY")
-ACCESS_TOKEN = "f3yAMI1PMBgORimWDAQS0ViEGk4WmT36"
+API_KEY = os.getenv("i2c07s753rdi06u5")
+ACCESS_TOKEN = "7RId2V9m6f3zL8K1W9qP4vB0xJ5YtN7m"
 
 kite = KiteConnect(api_key=API_KEY)
 kite.set_access_token(ACCESS_TOKEN)
