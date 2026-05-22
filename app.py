@@ -11,7 +11,7 @@ from kiteconnect import KiteConnect
 app = Flask(__name__)
 
 # ==========================================
-# ENV VARIABLES
+# ZERODHA CREDENTIALS
 # ==========================================
 
 API_KEY = os.getenv(
@@ -24,6 +24,9 @@ ACCESS_TOKEN = os.getenv(
     ""
 ).strip()
 
+# ==========================================
+# HOME
+# ==========================================
 
 @app.route("/")
 def home():
@@ -50,7 +53,7 @@ def home():
         )
 
         # ==========================================
-        # FETCH DATA
+        # FETCH HISTORICAL DATA
         # ==========================================
 
         to_date = datetime.now()
@@ -69,7 +72,7 @@ def home():
 
         if not data:
 
-            return "<h2>No Data Received</h2>"
+            return "<h2>No Historical Data Received</h2>"
 
         # ==========================================
         # DATAFRAME
@@ -108,7 +111,7 @@ def home():
         ]
 
         # ==========================================
-        # EMA
+        # EMA CALCULATION
         # ==========================================
 
         df["EMA9"] = df[
@@ -124,32 +127,6 @@ def home():
             span=21,
             adjust=False
         ).mean()
-
-        # ==========================================
-        # VWAP
-        # ==========================================
-
-        df["date_only"] = df[
-            "date"
-        ].dt.date
-
-        df["tpv"] = (
-            df["close"]
-            * df["volume"]
-        )
-
-        df["cum_tpv"] = df.groupby(
-            "date_only"
-        )["tpv"].cumsum()
-
-        df["cum_volume"] = df.groupby(
-            "date_only"
-        )["volume"].cumsum()
-
-        df["VWAP"] = (
-            df["cum_tpv"]
-            / df["cum_volume"]
-        )
 
         df = df.dropna().reset_index(
             drop=True
@@ -167,7 +144,7 @@ def home():
 
         highest_price = 0
 
-        trail_points = 100
+        trail_points = 150
 
         trades = []
 
@@ -193,8 +170,10 @@ def home():
 
                 and
 
-                curr["VWAP"]
-                > prev["VWAP"]
+                (
+                    curr["high"]
+                    - curr["low"]
+                ) > 20
             )
 
             # ==========================================
@@ -213,12 +192,14 @@ def home():
 
                 and
 
-                curr["VWAP"]
-                < prev["VWAP"]
+                (
+                    curr["high"]
+                    - curr["low"]
+                ) > 20
             )
 
             # ==========================================
-            # ENTRY
+            # ENTRY CONDITIONS
             # ==========================================
 
             if position is None:
@@ -256,7 +237,7 @@ def home():
                     ]
 
             # ==========================================
-            # BUY POSITION
+            # BUY TRADE MANAGEMENT
             # ==========================================
 
             elif position == "BUY":
@@ -296,12 +277,11 @@ def home():
                     ) * 100
 
                     # ==========================================
-                    # OPTION PREMIUM
+                    # OPTION PREMIUM SIMULATION
                     # ==========================================
 
                     option_entry = round(
-                        entry_price
-                        * 0.0025,
+                        entry_price * 0.0025,
                         2
                     )
 
@@ -311,17 +291,15 @@ def home():
                     )
 
                     # ==========================================
-                    # FIXED SL
+                    # FIXED STOP LOSS
                     # ==========================================
 
                     max_loss = (
-                        option_entry
-                        * 0.10
+                        option_entry * 0.10
                     )
 
                     minimum_exit = (
-                        option_entry
-                        - max_loss
+                        option_entry - max_loss
                     )
 
                     if option_exit < minimum_exit:
@@ -386,6 +364,8 @@ def home():
                         )
                     })
 
+                    # REVERSE POSITION
+
                     position = "SELL"
 
                     entry_price = curr[
@@ -401,7 +381,7 @@ def home():
                     ]
 
             # ==========================================
-            # SELL POSITION
+            # SELL TRADE MANAGEMENT
             # ==========================================
 
             elif position == "SELL":
@@ -441,8 +421,7 @@ def home():
                     ) * 100
 
                     option_entry = round(
-                        entry_price
-                        * 0.0025,
+                        entry_price * 0.0025,
                         2
                     )
 
@@ -452,17 +431,15 @@ def home():
                     )
 
                     # ==========================================
-                    # FIXED SL
+                    # FIXED STOP LOSS
                     # ==========================================
 
                     max_loss = (
-                        option_entry
-                        * 0.10
+                        option_entry * 0.10
                     )
 
                     minimum_exit = (
-                        option_entry
-                        - max_loss
+                        option_entry - max_loss
                     )
 
                     if option_exit < minimum_exit:
@@ -527,6 +504,8 @@ def home():
                         )
                     })
 
+                    # REVERSE POSITION
+
                     position = "BUY"
 
                     entry_price = curr[
@@ -554,7 +533,7 @@ def home():
             return "<h2>No Trades Generated</h2>"
 
         # ==========================================
-        # REMOVE TIMEZONE
+        # REMOVE TIMEZONE FOR EXCEL
         # ==========================================
 
         trades_df["entry_time"] = pd.to_datetime(
@@ -566,7 +545,7 @@ def home():
         ).dt.tz_localize(None)
 
         # ==========================================
-        # RESULTS
+        # RESULT ANALYSIS
         # ==========================================
 
         trades_df["result"] = trades_df[
@@ -626,7 +605,7 @@ def home():
 
         <div style="
         font-family:sans-serif;
-        max-width:900px;
+        max-width:1000px;
         margin:auto;
         padding:30px;
         background:white;
@@ -705,6 +684,10 @@ def home():
         """
 
 
+# ==========================================
+# DOWNLOAD EXCEL
+# ==========================================
+
 @app.route("/download")
 def download_file():
 
@@ -714,5 +697,20 @@ def download_file():
     )
 
 
+# ==========================================
+# RUN APP
+# ==========================================
+
 if __name__ == "__main__":
-    app.run()
+
+    port = int(
+        os.environ.get(
+            "PORT",
+            10000
+        )
+    )
+
+    app.run(
+        host="0.0.0.0",
+        port=port
+    )
