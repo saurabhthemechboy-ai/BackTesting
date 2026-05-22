@@ -160,13 +160,13 @@ def home():
 
             buy_signal = (
 
-                curr["EMA9"]
-                > curr["EMA21"]
+                curr["EMA21"]
+                > curr["EMA9"]
 
                 and
 
-                prev["EMA9"]
-                <= prev["EMA21"]
+                prev["EMA21"]
+                <= prev["EMA9"]
 
                 and
 
@@ -182,13 +182,13 @@ def home():
 
             sell_signal = (
 
-                curr["EMA9"]
-                < curr["EMA21"]
+                curr["EMA21"]
+                < curr["EMA9"]
 
                 and
 
-                prev["EMA9"]
-                >= prev["EMA21"]
+                prev["EMA21"]
+                >= prev["EMA9"]
 
                 and
 
