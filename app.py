@@ -367,6 +367,18 @@ def home():
             "backtest_results.xlsx"
         )
 
+        # REMOVE TIMEZONE FOR EXCEL
+
+        trades_df["entry_time"] = pd.to_datetime(
+            trades_df["entry_time"]
+        ).dt.tz_localize(None)
+
+        trades_df["exit_time"] = pd.to_datetime(
+            trades_df["exit_time"]
+        ).dt.tz_localize(None)
+
+# EXPORT EXCEL
+       
         trades_df.to_excel(
             excel_file,
             index=False
