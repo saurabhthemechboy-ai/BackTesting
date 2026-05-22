@@ -59,7 +59,7 @@ def home():
 
         from_date = (
             to_date
-            - timedelta(days=30)
+            - timedelta(days=90)
         )
 
         data = kite.historical_data(
