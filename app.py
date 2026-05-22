@@ -193,8 +193,8 @@ def home():
 
                 and
 
-                curr["close"]
-                > curr["VWAP"]
+                curr["VWAP"]
+                > prev["VWAP"]
             )
 
             # ==========================================
@@ -213,8 +213,8 @@ def home():
 
                 and
 
-                curr["close"]
-                < curr["VWAP"]
+                curr["VWAP"]
+                < prev["VWAP"]
             )
 
             # ==========================================
