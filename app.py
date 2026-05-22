@@ -93,7 +93,7 @@ def run_backtest():
         # SENSEX TOKEN
         # =========================
 
-        instrument_token = 265779
+        instrument_token = 256265
 
         # =========================
         # DOWNLOAD DATA
