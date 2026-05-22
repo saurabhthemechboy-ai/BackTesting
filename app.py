@@ -82,9 +82,9 @@ def home():
         # ======================================
 
         df = pd.DataFrame(data)
-            print(df.head())
-            print(df.tail())
-            print(df.columns)
+        print(df.head())
+        print(df.tail())
+        print(df.columns)
 
         df["date"] = pd.to_datetime(
             df["date"]
