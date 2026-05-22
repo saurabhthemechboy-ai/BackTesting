@@ -63,7 +63,7 @@ def home():
         )
 
         data = kite.historical_data(
-            instrument_token=256265,  # NIFTY
+            instrument_token=265,  # SENSEX
             from_date=from_date,
             to_date=to_date,
             interval="5minute"
@@ -82,6 +82,9 @@ def home():
         # ======================================
 
         df = pd.DataFrame(data)
+            print(df.head())
+            print(df.tail())
+            print(df.columns)
 
         df["date"] = pd.to_datetime(
             df["date"]
