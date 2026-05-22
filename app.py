@@ -31,7 +31,7 @@ def home():
     try:
 
         # ==========================================
-        # CONNECT TO ZERODHA
+        # CONNECT ZERODHA
         # ==========================================
 
         kite = KiteConnect(
@@ -50,7 +50,7 @@ def home():
         )
 
         # ==========================================
-        # FETCH HISTORICAL DATA
+        # FETCH DATA
         # ==========================================
 
         to_date = datetime.now()
@@ -61,7 +61,7 @@ def home():
         )
 
         data = kite.historical_data(
-            instrument_token=265,   # SENSEX
+            instrument_token=265,
             from_date=from_date,
             to_date=to_date,
             interval="5minute"
@@ -69,11 +69,7 @@ def home():
 
         if not data:
 
-            return """
-            <h2>
-            No historical data received
-            </h2>
-            """
+            return "<h2>No Data Received</h2>"
 
         # ==========================================
         # DATAFRAME
@@ -86,7 +82,7 @@ def home():
         )
 
         # ==========================================
-        # EMA CALCULATION
+        # EMA
         # ==========================================
 
         df["EMA9"] = df[
@@ -117,6 +113,10 @@ def home():
 
         entry_time = None
 
+        highest_price = 0
+
+        trail_points = 30
+
         trades = []
 
         for i in range(1, len(df)):
@@ -124,8 +124,6 @@ def home():
             prev = df.iloc[i - 1]
 
             curr = df.iloc[i]
-
-            # BUY SIGNAL
 
             buy_signal = (
 
@@ -137,8 +135,6 @@ def home():
                 prev["EMA9"]
                 <= prev["EMA21"]
             )
-
-            # SELL SIGNAL
 
             sell_signal = (
 
@@ -169,6 +165,10 @@ def home():
                         "date"
                     ]
 
+                    highest_price = curr[
+                        "close"
+                    ]
+
                 elif sell_signal:
 
                     position = "SELL"
@@ -181,13 +181,31 @@ def home():
                         "date"
                     ]
 
+                    highest_price = curr[
+                        "close"
+                    ]
+
             # ==========================================
-            # EXIT BUY
+            # BUY POSITION
             # ==========================================
 
             elif position == "BUY":
 
-                if sell_signal:
+                highest_price = max(
+                    highest_price,
+                    curr["close"]
+                )
+
+                trailing_stop = (
+                    highest_price
+                    - trail_points
+                )
+
+                if (
+                    sell_signal
+                    or
+                    curr["close"] < trailing_stop
+                ):
 
                     exit_price = curr[
                         "close"
@@ -202,10 +220,31 @@ def home():
                         - entry_price
                     )
 
+                    strike = round(
+                        entry_price / 100
+                    ) * 100
+
+                    option_entry = 200
+
+                    option_exit = (
+                        option_entry
+                        + (pnl * 0.6)
+                    )
+
+                    lot_size = 20
+
+                    real_pnl = (
+                        option_exit
+                        - option_entry
+                    ) * lot_size
+
                     trades.append({
 
                         "trade_type":
-                        "BUY",
+                        "BUY CE",
+
+                        "strike":
+                        f"{strike} CE",
 
                         "entry_time":
                         entry_time,
@@ -213,21 +252,39 @@ def home():
                         "exit_time":
                         exit_time,
 
-                        "entry_price":
+                        "spot_entry":
                         round(
                             entry_price,
                             2
                         ),
 
-                        "exit_price":
+                        "spot_exit":
                         round(
                             exit_price,
                             2
                         ),
 
-                        "pnl":
+                        "option_buy":
+                        round(
+                            option_entry,
+                            2
+                        ),
+
+                        "option_sell":
+                        round(
+                            option_exit,
+                            2
+                        ),
+
+                        "points":
                         round(
                             pnl,
+                            2
+                        ),
+
+                        "real_pnl":
+                        round(
+                            real_pnl,
                             2
                         )
                     })
@@ -242,13 +299,31 @@ def home():
                         "date"
                     ]
 
+                    highest_price = curr[
+                        "close"
+                    ]
+
             # ==========================================
-            # EXIT SELL
+            # SELL POSITION
             # ==========================================
 
             elif position == "SELL":
 
-                if buy_signal:
+                highest_price = min(
+                    highest_price,
+                    curr["close"]
+                )
+
+                trailing_stop = (
+                    highest_price
+                    + trail_points
+                )
+
+                if (
+                    buy_signal
+                    or
+                    curr["close"] > trailing_stop
+                ):
 
                     exit_price = curr[
                         "close"
@@ -263,10 +338,31 @@ def home():
                         - exit_price
                     )
 
+                    strike = round(
+                        entry_price / 100
+                    ) * 100
+
+                    option_entry = 200
+
+                    option_exit = (
+                        option_entry
+                        + (pnl * 0.6)
+                    )
+
+                    lot_size = 20
+
+                    real_pnl = (
+                        option_exit
+                        - option_entry
+                    ) * lot_size
+
                     trades.append({
 
                         "trade_type":
-                        "SELL",
+                        "BUY PE",
+
+                        "strike":
+                        f"{strike} PE",
 
                         "entry_time":
                         entry_time,
@@ -274,21 +370,39 @@ def home():
                         "exit_time":
                         exit_time,
 
-                        "entry_price":
+                        "spot_entry":
                         round(
                             entry_price,
                             2
                         ),
 
-                        "exit_price":
+                        "spot_exit":
                         round(
                             exit_price,
                             2
                         ),
 
-                        "pnl":
+                        "option_buy":
+                        round(
+                            option_entry,
+                            2
+                        ),
+
+                        "option_sell":
+                        round(
+                            option_exit,
+                            2
+                        ),
+
+                        "points":
                         round(
                             pnl,
+                            2
+                        ),
+
+                        "real_pnl":
+                        round(
+                            real_pnl,
                             2
                         )
                     })
@@ -303,8 +417,12 @@ def home():
                         "date"
                     ]
 
+                    highest_price = curr[
+                        "close"
+                    ]
+
         # ==========================================
-        # CREATE DATAFRAME
+        # TRADES DATAFRAME
         # ==========================================
 
         trades_df = pd.DataFrame(
@@ -313,18 +431,26 @@ def home():
 
         if trades_df.empty:
 
-            return """
-            <h2>
-            No trades generated
-            </h2>
-            """
+            return "<h2>No Trades Generated</h2>"
+
+        # ==========================================
+        # REMOVE TIMEZONE
+        # ==========================================
+
+        trades_df["entry_time"] = pd.to_datetime(
+            trades_df["entry_time"]
+        ).dt.tz_localize(None)
+
+        trades_df["exit_time"] = pd.to_datetime(
+            trades_df["exit_time"]
+        ).dt.tz_localize(None)
 
         # ==========================================
         # RESULTS
         # ==========================================
 
         trades_df["result"] = trades_df[
-            "pnl"
+            "real_pnl"
         ].apply(
             lambda x:
             "WIN"
@@ -333,7 +459,7 @@ def home():
         )
 
         trades_df["cumulative_pnl"] = trades_df[
-            "pnl"
+            "real_pnl"
         ].cumsum()
 
         total_trades = len(
@@ -342,7 +468,7 @@ def home():
 
         wins = len(
             trades_df[
-                trades_df["pnl"] > 0
+                trades_df["real_pnl"] > 0
             ]
         )
 
@@ -352,7 +478,7 @@ def home():
         )
 
         total_pnl = trades_df[
-            "pnl"
+            "real_pnl"
         ].sum()
 
         win_rate = (
@@ -367,18 +493,6 @@ def home():
             "backtest_results.xlsx"
         )
 
-        # REMOVE TIMEZONE FOR EXCEL
-
-        trades_df["entry_time"] = pd.to_datetime(
-            trades_df["entry_time"]
-        ).dt.tz_localize(None)
-
-        trades_df["exit_time"] = pd.to_datetime(
-            trades_df["exit_time"]
-        ).dt.tz_localize(None)
-
-# EXPORT EXCEL
-       
         trades_df.to_excel(
             excel_file,
             index=False
@@ -401,7 +515,7 @@ def home():
         ">
 
         <h1>
-        📊 SENSEX BACKTEST REPORT
+        📊 SENSEX OPTION BACKTEST REPORT
         </h1>
 
         <hr>
@@ -432,8 +546,8 @@ def home():
         </p>
 
         <p>
-        <b>Total PnL:</b>
-        {round(total_pnl, 2)}
+        <b>Total Option PnL:</b>
+        ₹ {round(total_pnl, 2)}
         </p>
 
         <hr>
