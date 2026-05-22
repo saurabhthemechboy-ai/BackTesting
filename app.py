@@ -7,26 +7,46 @@ import pandas as pd
 
 app = Flask(__name__)
 
-# Fetch system configurations cleanly from Render Dashboard Panel
-API_KEY = os.getenv("KITE_API_KEY")
-ACCESS_TOKEN = os.getenv("KITE_ACCESS_TOKEN")
+# Strip any accidental white spaces or quotes from Render's panel
+API_KEY = os.getenv("KITE_API_KEY", "").strip().replace('"', '').replace("'", "")
+ACCESS_TOKEN = os.getenv("KITE_ACCESS_TOKEN", "").strip().replace('"', '').replace("'", "")
 
 @app.route("/")
 def run_backtest_web():
     if not API_KEY or not ACCESS_TOKEN:
-        return "<h3>Setup Error: KITE_API_KEY or KITE_ACCESS_TOKEN environment variables are missing on Render!</h3>"
+        return f"""
+        <div style="font-family:sans-serif; padding:20px; color:#c0392b;">
+            <h3>❌ Configuration Error</h3>
+            <p>Render environment variables are empty or missing!</p>
+            <p><b>Detected API Key length:</b> {len(API_KEY)} characters</p>
+            <p><b>Detected Access Token length:</b> {len(ACCESS_TOKEN)} characters</p>
+        </div>
+        """
 
     try:
         # Initialize client framework wrapper
         kite = KiteConnect(api_key=API_KEY)
         kite.set_access_token(ACCESS_TOKEN)
 
-        # PRE-FLIGHT AUTHENTICATION TEST: Ensures your token is active
+        # PRE-FLIGHT AUTHENTICATION TEST
         try:
             profile = kite.profile()
             user_name = profile.get("user_name", "Valued Trader")
         except Exception as auth_err:
-            return f"<h3>Authentication Rejection: {auth_err}</h3><p>Your Access Token or API Key is incorrect or expired. Re-generate token.</p>"
+            return f"""
+            <div style="font-family:sans-serif; padding:30px; border:1px solid #f5c6cb; background-color:#f8d7da; color:#721c24; border-radius:5px; max-width:600px; margin:20px auto;">
+                <h3 style="margin-top:0;">❌ Zerodha Authentication Rejected</h3>
+                <p>Your <b>KITE_API_KEY</b> or <b>KITE_ACCESS_TOKEN</b> was rejected by Zerodha's login servers.</p>
+                <p><b>Error Details:</b> <code style="background:#fff; padding:2px 5px; border-radius:3px;">{auth_err}</code></p>
+                <hr style="border:0; border-top:1px solid #f5c6cb;">
+                <h4>💡 Debug Checklist:</h4>
+                <ol style="padding-left:20px;">
+                    <li>Did you reset your <b>API Secret</b> on the developer portal? If yes, your active access token was permanently killed. You must log in via your browser again to generate a new one.</li>
+                    <li>Double check that you didn't paste your <b>API Secret</b> inside the <b>API Key</b> slot on Render.</li>
+                    <li>Ensure your session token hasn't expired.</li>
+                </ol>
+            </div>
+            """
 
         # Calculate time windows dynamically
         final_end_date = datetime.now().date()
@@ -38,27 +58,24 @@ def run_backtest_web():
         # Sequential Data Fetching Loop
         while current_start < final_end_date:
             current_end = min(current_start + timedelta(days=90), final_end_date)
-            
-            # Format dates to standard strings required by Zerodha
             str_start = current_start.strftime("%Y-%m-%d")
             str_end = current_end.strftime("%Y-%m-%d")
             
             try:
-                # CRITICAL FIX: Pass arguments as raw, ordered positions (No keywords)
-                data = kite.historical_data(
-                    265,          # Instrument Token for SENSEX
-                    str_start,    # From Date string
-                    str_end,      # To Date string
-                    "5minute"     # Interval
-                )
+                # Ordered positional arguments targeting SENSEX (Token: 265)
+                data = kite.historical_data(265, str_start, str_end, "5minute")
                 if data:
                     all_chunks.extend(data)
-                
-                # Respect standard API rate thresholds
                 time.sleep(0.6)
             except Exception as loop_error:
-                return f"<h3>Kite Backend Rejection at chunk [{str_start} to {str_end}]:</h3><p style='color:red;'><b>{loop_error}</b></p><p>Logged in as: {user_name}. Check your Developer Console plan status.</p>"
-            
+                return f"""
+                <div style="font-family:sans-serif; padding:20px;">
+                    <h3>⚠️ Account Active but Data Fetch Rejected</h3>
+                    <p>Logged in successfully as <b>{user_name}</b>, but historical charts were blocked.</p>
+                    <p><b>Reason:</b> <span style="color:red;">{loop_error}</span></p>
+                    <p><i>Note: If it says 'insufficient permission', you need to renew your base ₹500 plan or clear your app cache.</i></p>
+                </div>
+                """
             current_start = current_end + timedelta(days=1)
 
         if not all_chunks:
@@ -80,7 +97,6 @@ def run_backtest_web():
         df["vol_price"] = df["close"] * df["volume"]
         df["cum_volume"] = df.groupby("date_only")["volume"].cumsum()
         df["cum_vol_price"] = df.groupby("date_only")["vol_price"].cumsum()
-        
         df["VWAP"] = df["cum_vol_price"] / df["cum_volume"]
         df["VWAP"] = df["VWAP"].fillna(df["close"]) 
         
@@ -93,14 +109,10 @@ def run_backtest_web():
         market_end = datetime.strptime("14:30", "%H:%M").time()
         df = df[(df["time"] >= market_start) & (df["time"] <= market_end)].copy()
 
-        if df.empty:
-            return "<h3>Processing Error: Target intraday array is empty.</h3>"
-
         # --- RUN BACKTEST ENGINE ---
         trades = []
         current_position = None
         entry_price = 0
-        entry_time = None
 
         for i in range(1, len(df)):
             row = df.iloc[i]
@@ -116,18 +128,16 @@ def run_backtest_web():
             is_sell_signal = p_ema9 > p_ema21 and ema9 < ema21 and close < vwap
 
             if current_position is None:
-                if is_buy_signal:
-                    current_position = "BUY"; entry_price = close; entry_time = row["date"]
-                elif is_sell_signal:
-                    current_position = "SELL"; entry_price = close; entry_time = row["date"]
+                if is_buy_signal: current_position = "BUY"; entry_price = close
+                elif is_sell_signal: current_position = "SELL"; entry_price = close
             elif current_position == "BUY" and is_sell_signal:
                 pnl = close - entry_price
                 trades.append({"Type": "BUY", "PnL": pnl, "Return %": (pnl/entry_price)*100})
-                current_position = "SELL"; entry_price = close; entry_time = row["date"]
+                current_position = "SELL"; entry_price = close
             elif current_position == "SELL" and is_buy_signal:
                 pnl = entry_price - close
                 trades.append({"Type": "SELL", "PnL": pnl, "Return %": (pnl/entry_price)*100})
-                current_position = "BUY"; entry_price = close; entry_time = row["date"]
+                current_position = "BUY"; entry_price = close
 
         trades_df = pd.DataFrame(trades)
 
@@ -151,7 +161,7 @@ def run_backtest_web():
                 </h3>
             </div>
             """
-        return f"<h3>Execution completed for {user_name}, but zero structural entry signals were triggered.</h3>"
+        return f"<h3>Execution completed for {user_name}, but zero strategy signals were triggered.</h3>"
 
     except Exception as global_err:
         return f"<h3>Critical Application Crash: {global_err}</h3>"
