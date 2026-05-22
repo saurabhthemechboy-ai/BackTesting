@@ -307,9 +307,6 @@ def run_backtest():
 
                 close > vwap
 
-                and
-
-                close > row["open"]
             )
 
             sell_signal = (
@@ -324,9 +321,6 @@ def run_backtest():
 
                 close < vwap
 
-                and
-
-                close < row["open"]
             )
 
             # =========================
