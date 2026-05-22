@@ -3,3 +3,4 @@ gunicorn
 kiteconnect
 pandas
 requests
+openpyxl
