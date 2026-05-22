@@ -82,6 +82,32 @@ def home():
         )
 
         # ==========================================
+        # MARKET TIME FILTER
+        # ==========================================
+
+        df["time"] = df["date"].dt.time
+
+        market_start = datetime.strptime(
+            "09:20",
+            "%H:%M"
+        ).time()
+
+        market_end = datetime.strptime(
+            "15:00",
+            "%H:%M"
+        ).time()
+
+        df = df[
+            (
+                df["time"] >= market_start
+            )
+            &
+            (
+                df["time"] <= market_end
+            )
+        ]
+
+        # ==========================================
         # EMA
         # ==========================================
 
@@ -99,6 +125,32 @@ def home():
             adjust=False
         ).mean()
 
+        # ==========================================
+        # VWAP
+        # ==========================================
+
+        df["date_only"] = df[
+            "date"
+        ].dt.date
+
+        df["tpv"] = (
+            df["close"]
+            * df["volume"]
+        )
+
+        df["cum_tpv"] = df.groupby(
+            "date_only"
+        )["tpv"].cumsum()
+
+        df["cum_volume"] = df.groupby(
+            "date_only"
+        )["volume"].cumsum()
+
+        df["VWAP"] = (
+            df["cum_tpv"]
+            / df["cum_volume"]
+        )
+
         df = df.dropna().reset_index(
             drop=True
         )
@@ -115,7 +167,7 @@ def home():
 
         highest_price = 0
 
-        trail_points = 30
+        trail_points = 100
 
         trades = []
 
@@ -124,6 +176,10 @@ def home():
             prev = df.iloc[i - 1]
 
             curr = df.iloc[i]
+
+            # ==========================================
+            # BUY SIGNAL
+            # ==========================================
 
             buy_signal = (
 
@@ -134,7 +190,16 @@ def home():
 
                 prev["EMA9"]
                 <= prev["EMA21"]
+
+                and
+
+                curr["close"]
+                > curr["VWAP"]
             )
+
+            # ==========================================
+            # SELL SIGNAL
+            # ==========================================
 
             sell_signal = (
 
@@ -145,6 +210,11 @@ def home():
 
                 prev["EMA9"]
                 >= prev["EMA21"]
+
+                and
+
+                curr["close"]
+                < curr["VWAP"]
             )
 
             # ==========================================
@@ -204,7 +274,8 @@ def home():
                 if (
                     sell_signal
                     or
-                    curr["close"] < trailing_stop
+                    curr["close"]
+                    < trailing_stop
                 ):
 
                     exit_price = curr[
@@ -224,12 +295,38 @@ def home():
                         entry_price / 100
                     ) * 100
 
-                    option_entry = 200
+                    # ==========================================
+                    # OPTION PREMIUM
+                    # ==========================================
+
+                    option_entry = round(
+                        entry_price
+                        * 0.0025,
+                        2
+                    )
 
                     option_exit = (
                         option_entry
                         + (pnl * 0.6)
                     )
+
+                    # ==========================================
+                    # FIXED SL
+                    # ==========================================
+
+                    max_loss = (
+                        option_entry
+                        * 0.10
+                    )
+
+                    minimum_exit = (
+                        option_entry
+                        - max_loss
+                    )
+
+                    if option_exit < minimum_exit:
+
+                        option_exit = minimum_exit
 
                     lot_size = 20
 
@@ -322,7 +419,8 @@ def home():
                 if (
                     buy_signal
                     or
-                    curr["close"] > trailing_stop
+                    curr["close"]
+                    > trailing_stop
                 ):
 
                     exit_price = curr[
@@ -342,12 +440,34 @@ def home():
                         entry_price / 100
                     ) * 100
 
-                    option_entry = 200
+                    option_entry = round(
+                        entry_price
+                        * 0.0025,
+                        2
+                    )
 
                     option_exit = (
                         option_entry
                         + (pnl * 0.6)
                     )
+
+                    # ==========================================
+                    # FIXED SL
+                    # ==========================================
+
+                    max_loss = (
+                        option_entry
+                        * 0.10
+                    )
+
+                    minimum_exit = (
+                        option_entry
+                        - max_loss
+                    )
+
+                    if option_exit < minimum_exit:
+
+                        option_exit = minimum_exit
 
                     lot_size = 20
 
@@ -422,7 +542,7 @@ def home():
                     ]
 
         # ==========================================
-        # TRADES DATAFRAME
+        # RESULTS DATAFRAME
         # ==========================================
 
         trades_df = pd.DataFrame(
