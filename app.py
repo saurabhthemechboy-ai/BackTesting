@@ -162,24 +162,16 @@ def home():
             # NO NEW TRADE AFTER 2:45 PM
             # ==========================================
 
-            from datetime import datetime, time
+            current_time = curr["date"].time()
 
-# 1. Safely handle if 'date' is an integer timestamp or already a datetime
-            if isinstance(curr["date"], (int, float)):
-# Convert Unix timestamp (seconds) to a real datetime object
-                dt_object = datetime.fromtimestamp(curr["date"])
-            else:
-                dt_object = curr["date"]
+            cutoff_time = datetime.strptime(
+                "14:45",
+            "%H:%M"
+            ).time()
 
-# 2. Extract the time object safely
-            current_time = dt_object.time()
-
-# 3. Create the cutoff time cleanly using integers (hour, minute)
-            cutoff_time = time(14, 45)
-
-# 4. Perform the check
-            allow_new_trade = current_time < cutoff_time
-            
+            allow_new_trade = (
+                current_time < cutoff_time
+            )
 
             # ==========================================
             # BUY SIGNAL
