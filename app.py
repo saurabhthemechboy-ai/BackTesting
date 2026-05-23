@@ -505,7 +505,7 @@ def home():
                         and
                         allow_new_trade
                     ):
-                        position = "SELL"'
+                        position = "SELL"
                         current_strike = strike
                         entry_price = curr[
                             "close"
