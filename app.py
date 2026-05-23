@@ -62,7 +62,7 @@ def login():
     </h1>
 
     <a href="{login_url}">
-    Click Here To Login
+    CLICK HERE TO LOGIN
     </a>
 
     </div>
@@ -332,7 +332,7 @@ def home():
         )
 
         # ==========================================
-        # BACKTEST VARIABLES
+        # VARIABLES
         # ==========================================
 
         position = None
@@ -358,7 +358,7 @@ def home():
             curr = df.iloc[i]
 
             # ==========================================
-            # NO NEW TRADE AFTER 2:45
+            # NO TRADE AFTER 14:45
             # ==========================================
 
             current_time = curr[
@@ -420,7 +420,7 @@ def home():
             )
 
             # ==========================================
-            # NEW ENTRY
+            # ENTRY
             # ==========================================
 
             if (
@@ -593,7 +593,15 @@ def home():
                         "EMA EXIT"
                     })
 
-                    if sl_hit:
+                    # ==========================================
+                    # REVERSE ONLY BEFORE 14:45
+                    # ==========================================
+
+                    if (
+                        sl_hit
+                        and
+                        allow_new_trade
+                    ):
 
                         position = "SELL"
 
@@ -745,7 +753,15 @@ def home():
                         "EMA EXIT"
                     })
 
-                    if sl_hit:
+                    # ==========================================
+                    # REVERSE ONLY BEFORE 14:45
+                    # ==========================================
+
+                    if (
+                        sl_hit
+                        and
+                        allow_new_trade
+                    ):
 
                         position = "BUY"
 
