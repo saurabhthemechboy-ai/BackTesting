@@ -1,4 +1,5 @@
 import os
+import numpy as np
 from datetime import datetime, timedelta
 
 from flask import Flask
@@ -36,7 +37,99 @@ def get_access_token():
         "KITE_ACCESS_TOKEN",
         ""
     ).strip()
+    
+# ==========================================
+# GET ATM OPTION TOKEN
+# ==========================================
 
+def get_option_token(
+
+    kite,
+    strike,
+    option_type
+
+):
+
+    try:
+
+        instruments = kite.instruments(
+            "NFO"
+        )
+
+        instruments_df = pd.DataFrame(
+            instruments
+        )
+
+        # ==========================================
+        # SENSEX OPTIONS ONLY
+        # ==========================================
+
+        sensex_options = instruments_df[
+
+            instruments_df[
+                "tradingsymbol"
+            ].str.contains(
+                "SENSEX",
+                na=False
+            )
+
+        ]
+
+        # ==========================================
+        # CE / PE FILTER
+        # ==========================================
+
+        sensex_options = sensex_options[
+
+            sensex_options[
+                "tradingsymbol"
+            ].str.endswith(
+                option_type
+            )
+
+        ]
+
+        # ==========================================
+        # STRIKE FILTER
+        # ==========================================
+
+        sensex_options = sensex_options[
+
+            sensex_options[
+                "strike"
+            ] == strike
+
+        ]
+
+        # ==========================================
+        # NEAREST EXPIRY
+        # ==========================================
+
+        sensex_options = sensex_options.sort_values(
+            by="expiry"
+        )
+
+        if len(sensex_options) == 0:
+
+            return None
+
+        return int(
+
+            sensex_options.iloc[0][
+                "instrument_token"
+            ]
+
+        )
+
+    except Exception as e:
+
+        print(
+            "OPTION TOKEN ERROR:",
+            e
+        )
+
+        return None
+        
 # ==========================================
 # LOGIN
 # ==========================================
@@ -344,6 +437,19 @@ def home():
                         curr["close"] / 100
                     ) * 100
 
+                    ce_token = get_option_token(
+
+                        kite,
+                        current_strike,
+                        "CE"
+
+                    )
+
+                    print(
+                        "CE TOKEN:",
+                        ce_token
+                    )
+
                 elif sell_signal:
 
                     position = "SELL"
@@ -363,6 +469,19 @@ def home():
                     current_strike = round(
                         curr["close"] / 100
                     ) * 100
+
+                    pe_token = get_option_token(
+
+                        kite,
+                        current_strike,
+                        "PE"
+
+                    )
+
+                    print(
+                        "PE TOKEN:",
+                        pe_token
+                    )
 
             # ==========================================
             # BUY POSITION
