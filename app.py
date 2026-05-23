@@ -26,6 +26,10 @@ API_SECRET = os.getenv(
     ""
 ).strip()
 
+# ==========================================
+# GET ACCESS TOKEN
+# ==========================================
+
 def get_access_token():
 
     return os.getenv(
@@ -171,7 +175,7 @@ def callback():
         </li>
 
         <li>
-        Manual Deploy → Clear Cache & Deploy
+        Deploy Latest Commit
         </li>
         </ol>
 
@@ -209,10 +213,10 @@ def home():
     try:
 
         # ==========================================
-        # ACCESS TOKEN CHECK
+        # CHECK ACCESS TOKEN
         # ==========================================
 
-        if ACCESS_TOKEN == "":
+        if get_access_token() == "":
 
             return redirect(
                 "/login"
@@ -238,7 +242,7 @@ def home():
         )
 
         # ==========================================
-        # FETCH DATA
+        # FETCH HISTORICAL DATA
         # ==========================================
 
         to_date = datetime.now()
@@ -258,9 +262,11 @@ def home():
         if not data:
 
             return """
+
             <h2>
             No Historical Data
             </h2>
+
             """
 
         # ==========================================
@@ -304,7 +310,7 @@ def home():
         ]
 
         # ==========================================
-        # EMA
+        # EMA CALCULATION
         # ==========================================
 
         df["EMA9"] = df[
@@ -326,7 +332,7 @@ def home():
         )
 
         # ==========================================
-        # VARIABLES
+        # BACKTEST VARIABLES
         # ==========================================
 
         position = None
@@ -414,7 +420,7 @@ def home():
             )
 
             # ==========================================
-            # ENTRY
+            # NEW ENTRY
             # ==========================================
 
             if (
@@ -587,8 +593,6 @@ def home():
                         "EMA EXIT"
                     })
 
-                    # REVERSE ONLY ON SL HIT
-
                     if sl_hit:
 
                         position = "SELL"
@@ -741,8 +745,6 @@ def home():
                         "EMA EXIT"
                     })
 
-                    # REVERSE ONLY ON SL HIT
-
                     if sl_hit:
 
                         position = "BUY"
@@ -774,9 +776,11 @@ def home():
         if trades_df.empty:
 
             return """
+
             <h2>
             No Trades Generated
             </h2>
+
             """
 
         trades_df["entry_time"] = pd.to_datetime(
@@ -786,19 +790,6 @@ def home():
         trades_df["exit_time"] = pd.to_datetime(
             trades_df["exit_time"]
         ).dt.tz_localize(None)
-
-        trades_df["result"] = trades_df[
-            "real_pnl"
-        ].apply(
-            lambda x:
-            "WIN"
-            if x > 0
-            else "LOSS"
-        )
-
-        trades_df["cumulative_pnl"] = trades_df[
-            "real_pnl"
-        ].cumsum()
 
         total_trades = len(
             trades_df
