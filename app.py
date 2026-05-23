@@ -42,6 +42,10 @@ def get_access_token():
 # GET ATM OPTION TOKEN
 # ==========================================
 
+# ==========================================
+# GET OPTION TOKEN
+# ==========================================
+
 def get_option_token(
 
     kite,
@@ -49,6 +53,105 @@ def get_option_token(
     option_type
 
 ):
+
+    try:
+
+        instruments = kite.instruments(
+            "NFO"
+        )
+
+        instruments_df = pd.DataFrame(
+            instruments
+        )
+
+        # ==========================================
+        # FILTER SENSEX
+        # ==========================================
+
+        sensex_options = instruments_df[
+
+            instruments_df[
+                "name"
+            ] == "SENSEX"
+
+        ]
+
+        # ==========================================
+        # OPTION TYPE
+        # ==========================================
+
+        sensex_options = sensex_options[
+
+            sensex_options[
+                "instrument_type"
+            ] == option_type
+
+        ]
+
+        # ==========================================
+        # STRIKE MATCH
+        # ==========================================
+
+        sensex_options = sensex_options[
+
+            sensex_options[
+                "strike"
+            ].astype(float)
+
+            ==
+
+            float(strike)
+
+        ]
+
+        # ==========================================
+        # CHECK EMPTY
+        # ==========================================
+
+        if sensex_options.empty:
+
+            print(
+                "NO OPTION FOUND"
+            )
+
+            return None
+
+        # ==========================================
+        # SORT EXPIRY
+        # ==========================================
+
+        sensex_options = sensex_options.sort_values(
+            by="expiry"
+        )
+
+        option_row = sensex_options.iloc[0]
+
+        token = int(
+            option_row[
+                "instrument_token"
+            ]
+        )
+
+        symbol = option_row[
+            "tradingsymbol"
+        ]
+
+        print(
+            "FOUND OPTION:",
+            symbol,
+            token
+        )
+
+        return token
+
+    except Exception as e:
+
+        print(
+            "OPTION TOKEN ERROR:",
+            str(e)
+        )
+
+        return None
 
     try:
 
@@ -445,6 +548,10 @@ def home():
 
                     )
 
+                    if ce_token is None:
+
+                        continue
+
                     print(
                         "CE TOKEN:",
                         ce_token
@@ -477,6 +584,10 @@ def home():
                         "PE"
 
                     )
+
+                    if pe_token is None:
+
+                        continue
 
                     print(
                         "PE TOKEN:",
