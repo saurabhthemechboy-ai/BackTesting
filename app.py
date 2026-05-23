@@ -2,6 +2,8 @@ import os
 from datetime import datetime, timedelta
 
 from flask import Flask
+from flask import request
+from flask import redirect
 from flask import send_file
 
 import pandas as pd
@@ -11,11 +13,16 @@ from kiteconnect import KiteConnect
 app = Flask(__name__)
 
 # ==========================================
-# ZERODHA API
+# API CONFIG
 # ==========================================
 
 API_KEY = os.getenv(
     "KITE_API_KEY",
+    ""
+).strip()
+
+API_SECRET = os.getenv(
+    "KITE_API_SECRET",
     ""
 ).strip()
 
@@ -25,6 +32,123 @@ ACCESS_TOKEN = os.getenv(
 ).strip()
 
 # ==========================================
+# LOGIN ROUTE
+# ==========================================
+
+@app.route("/login")
+def login():
+
+    kite = KiteConnect(
+        api_key=API_KEY
+    )
+
+    login_url = kite.login_url()
+
+    return f"""
+
+    <div style="
+    font-family:sans-serif;
+    padding:40px;
+    ">
+
+    <h1>
+    Zerodha Login
+    </h1>
+
+    <a href="{login_url}">
+    Click Here To Login
+    </a>
+
+    </div>
+
+    """
+
+# ==========================================
+# CALLBACK ROUTE
+# ==========================================
+
+@app.route("/callback")
+def callback():
+
+    try:
+
+        request_token = request.args.get(
+            "request_token"
+        )
+
+        if not request_token:
+
+            return """
+            <h2>
+            Request Token Missing
+            </h2>
+            """
+
+        kite = KiteConnect(
+            api_key=API_KEY
+        )
+
+        data = kite.generate_session(
+            request_token,
+            api_secret=API_SECRET
+        )
+
+        access_token = data[
+            "access_token"
+        ]
+
+        return f"""
+
+        <div style="
+        font-family:sans-serif;
+        padding:40px;
+        ">
+
+        <h1>
+        ACCESS TOKEN GENERATED
+        </h1>
+
+        <hr>
+
+        <p>
+        Copy this token and paste into:
+        </p>
+
+        <h3>
+        Render → Environment Variables
+        </h3>
+
+        <hr>
+
+        <textarea rows="6" cols="100">
+{access_token}
+        </textarea>
+
+        <hr>
+
+        <a href="/">
+        Go To Backtest
+        </a>
+
+        </div>
+
+        """
+
+    except Exception as e:
+
+        return f"""
+
+        <h1 style='color:red;'>
+        LOGIN ERROR
+        </h1>
+
+        <pre>
+        {str(e)}
+        </pre>
+
+        """
+
+# ==========================================
 # HOME
 # ==========================================
 
@@ -32,6 +156,16 @@ ACCESS_TOKEN = os.getenv(
 def home():
 
     try:
+
+        # ==========================================
+        # CHECK ACCESS TOKEN
+        # ==========================================
+
+        if ACCESS_TOKEN == "":
+
+            return redirect(
+                "/login"
+            )
 
         # ==========================================
         # CONNECT ZERODHA
@@ -72,7 +206,11 @@ def home():
 
         if not data:
 
-            return "<h2>No Historical Data Received</h2>"
+            return """
+            <h2>
+            No Historical Data
+            </h2>
+            """
 
         # ==========================================
         # DATAFRAME
@@ -88,7 +226,9 @@ def home():
         # MARKET TIME FILTER
         # ==========================================
 
-        df["time"] = df["date"].dt.time
+        df["time"] = df[
+            "date"
+        ].dt.time
 
         market_start = datetime.strptime(
             "09:20",
@@ -102,11 +242,13 @@ def home():
 
         df = df[
             (
-                df["time"] >= market_start
+                df["time"]
+                >= market_start
             )
             &
             (
-                df["time"] <= market_end
+                df["time"]
+                <= market_end
             )
         ]
 
@@ -133,7 +275,7 @@ def home():
         )
 
         # ==========================================
-        # BACKTEST VARIABLES
+        # VARIABLES
         # ==========================================
 
         position = None
@@ -159,18 +301,21 @@ def home():
             curr = df.iloc[i]
 
             # ==========================================
-            # NO NEW TRADE AFTER 2:45 PM
+            # NO NEW TRADE AFTER 2:45
             # ==========================================
 
-            current_time = curr["date"].time()
+            current_time = curr[
+                "date"
+            ].time()
 
             cutoff_time = datetime.strptime(
                 "14:45",
-            "%H:%M"
+                "%H:%M"
             ).time()
 
             allow_new_trade = (
-                current_time < cutoff_time
+                current_time
+                < cutoff_time
             )
 
             # ==========================================
@@ -218,7 +363,7 @@ def home():
             )
 
             # ==========================================
-            # FIRST ENTRY
+            # ENTRY
             # ==========================================
 
             if (
@@ -260,7 +405,7 @@ def home():
                     ]
 
             # ==========================================
-            # BUY TRADE
+            # BUY POSITION
             # ==========================================
 
             elif position == "BUY":
@@ -305,10 +450,6 @@ def home():
                         entry_price / 100
                     ) * 100
 
-                    # ==========================================
-                    # OPTION PREMIUM
-                    # ==========================================
-
                     option_entry = round(
                         entry_price * 0.0025,
                         2
@@ -318,10 +459,6 @@ def home():
                         option_entry
                         + (pnl * 0.6)
                     )
-
-                    # ==========================================
-                    # FIXED OPTION SL
-                    # ==========================================
 
                     max_loss = (
                         option_entry * 0.10
@@ -399,10 +536,6 @@ def home():
                         "EMA EXIT"
                     })
 
-                    # ==========================================
-                    # REVERSE ONLY ON SL HIT
-                    # ==========================================
-
                     if sl_hit:
 
                         position = "SELL"
@@ -424,7 +557,7 @@ def home():
                         position = None
 
             # ==========================================
-            # SELL TRADE
+            # SELL POSITION
             # ==========================================
 
             elif position == "SELL":
@@ -478,10 +611,6 @@ def home():
                         option_entry
                         + (pnl * 0.6)
                     )
-
-                    # ==========================================
-                    # FIXED OPTION SL
-                    # ==========================================
 
                     max_loss = (
                         option_entry * 0.10
@@ -559,10 +688,6 @@ def home():
                         "EMA EXIT"
                     })
 
-                    # ==========================================
-                    # REVERSE ONLY ON SL HIT
-                    # ==========================================
-
                     if sl_hit:
 
                         position = "BUY"
@@ -593,11 +718,11 @@ def home():
 
         if trades_df.empty:
 
-            return "<h2>No Trades Generated</h2>"
-
-        # ==========================================
-        # REMOVE TIMEZONE
-        # ==========================================
+            return """
+            <h2>
+            No Trades Generated
+            </h2>
+            """
 
         trades_df["entry_time"] = pd.to_datetime(
             trades_df["entry_time"]
@@ -606,10 +731,6 @@ def home():
         trades_df["exit_time"] = pd.to_datetime(
             trades_df["exit_time"]
         ).dt.tz_localize(None)
-
-        # ==========================================
-        # PERFORMANCE
-        # ==========================================
 
         trades_df["result"] = trades_df[
             "real_pnl"
@@ -648,7 +769,7 @@ def home():
         ) * 100
 
         # ==========================================
-        # EXCEL EXPORT
+        # EXPORT EXCEL
         # ==========================================
 
         excel_file = (
@@ -682,33 +803,36 @@ def home():
 
         <hr>
 
-        <p><b>User:</b> {user_name}</p>
+        <p>
+        <b>User:</b> {user_name}
+        </p>
 
-        <p><b>Total Trades:</b> {total_trades}</p>
+        <p>
+        <b>Total Trades:</b> {total_trades}
+        </p>
 
-        <p><b>Winning Trades:</b> {wins}</p>
+        <p>
+        <b>Winning Trades:</b> {wins}
+        </p>
 
-        <p><b>Losing Trades:</b> {losses}</p>
+        <p>
+        <b>Losing Trades:</b> {losses}
+        </p>
 
-        <p><b>Win Rate:</b> {win_rate:.2f}%</p>
+        <p>
+        <b>Win Rate:</b> {win_rate:.2f}%
+        </p>
 
-        <p><b>Total Option PnL:</b> ₹ {round(total_pnl, 2)}</p>
+        <p>
+        <b>Total Option PnL:</b>
+        ₹ {round(total_pnl, 2)}
+        </p>
 
         <hr>
 
         <a href="/download">
         📥 Download Excel Report
         </a>
-
-        <hr>
-
-        <h3>
-        Recent Trades
-        </h3>
-
-        <pre>
-        {trades[:10]}
-        </pre>
 
         </div>
 
@@ -728,9 +852,8 @@ def home():
 
         """
 
-
 # ==========================================
-# DOWNLOAD ROUTE
+# DOWNLOAD EXCEL
 # ==========================================
 
 @app.route("/download")
