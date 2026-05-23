@@ -1,3 +1,6 @@
+# Full Intraday Astrology + EMA + VWAP Backtesting Engine
+
+```python
 import os
 from datetime import datetime, timedelta
 
@@ -13,7 +16,7 @@ from kiteconnect import KiteConnect
 app = Flask(__name__)
 
 # ==========================================
-# API CONFIG
+# ZERODHA API CONFIG
 # ==========================================
 
 API_KEY = os.getenv(
@@ -38,7 +41,7 @@ def get_access_token():
     ).strip()
 
 # ==========================================
-# LOGIN
+# LOGIN ROUTE
 # ==========================================
 
 @app.route("/login")
@@ -53,7 +56,7 @@ def login():
     )
 
 # ==========================================
-# CALLBACK
+# CALLBACK ROUTE
 # ==========================================
 
 @app.route("/callback")
@@ -95,9 +98,7 @@ def callback():
 
     except Exception as e:
 
-        return f"""
-        ERROR : {str(e)}
-        """
+        return f"ERROR : {str(e)}"
 
 # ==========================================
 # HOME
@@ -134,14 +135,14 @@ def home():
         )
 
         # ==========================================
-        # FETCH DATA
+        # HISTORICAL DATA
         # ==========================================
 
         to_date = datetime.now()
 
         from_date = (
             to_date
-            - timedelta(days=30)
+            - timedelta(days=90)
         )
 
         data = kite.historical_data(
@@ -166,7 +167,7 @@ def home():
         )
 
         # ==========================================
-        # MARKET TIME FILTER
+        # MARKET HOURS FILTER
         # ==========================================
 
         df["time"] = df[
@@ -259,10 +260,10 @@ def home():
 
         trades = []
 
-        trail_points = 80
+        trail_points = 150
 
         # ==========================================
-        # MAIN LOOP
+        # LOOP
         # ==========================================
 
         for i in range(1, len(df)):
@@ -274,6 +275,10 @@ def home():
             current_time = curr[
                 "date"
             ].time()
+
+            weekday = curr[
+                "date"
+            ].weekday()
 
             # ==========================================
             # ENTRY CUTOFF
@@ -290,7 +295,7 @@ def home():
             )
 
             # ==========================================
-            # FORCE EXIT
+            # FORCE EXIT TIME
             # ==========================================
 
             squareoff_time = datetime.strptime(
@@ -304,7 +309,42 @@ def home():
             )
 
             # ==========================================
-            # BUY SIGNAL
+            # ASTROLOGY FILTERS
+            # ==========================================
+
+            trade_allowed_today = True
+
+            # Monday afternoon weak
+            if weekday == 0:
+
+                monday_cutoff = datetime.strptime(
+                    "12:30",
+                    "%H:%M"
+                ).time()
+
+                if current_time >= monday_cutoff:
+
+                    trade_allowed_today = False
+
+            # Rahu Kaal block
+            rahu_start = datetime.strptime(
+                "13:30",
+                "%H:%M"
+            ).time()
+
+            rahu_end = datetime.strptime(
+                "15:00",
+                "%H:%M"
+            ).time()
+
+            in_rahu_kaal = (
+                current_time >= rahu_start
+                and
+                current_time <= rahu_end
+            )
+
+            # ==========================================
+            # SIGNALS
             # ==========================================
 
             buy_signal = (
@@ -322,10 +362,6 @@ def home():
                 curr["close"]
                 > curr["VWAP"]
             )
-
-            # ==========================================
-            # SELL SIGNAL
-            # ==========================================
 
             sell_signal = (
 
@@ -348,12 +384,13 @@ def home():
             # ==========================================
 
             if (
-
                 position is None
-
                 and
-
                 allow_new_trade
+                and
+                trade_allowed_today
+                and
+                not in_rahu_kaal
             ):
 
                 if buy_signal:
@@ -458,48 +495,16 @@ def home():
                     - trail_points
                 )
 
-                # ==========================================
-                # TRAILING SL
-                # ==========================================
-
-                trailing_sl_hit = (
-
+                sl_hit = (
                     curr["close"]
                     < trailing_stop
                 )
 
-                # ==========================================
-                # HARD SL
-                # ==========================================
-
-                hard_sl_hit = (
-
-                    curr["close"]
-                    < (
-                        entry_price - 60
-                    )
-                )
-
-                # ==========================================
-                # EMA EXIT
-                # ==========================================
-
                 crossover_exit = sell_signal
 
-                # ==========================================
-                # EXIT CONDITIONS
-                # ==========================================
-
                 if (
-
-                    trailing_sl_hit
-
+                    sl_hit
                     or
-
-                    hard_sl_hit
-
-                    or
-
                     crossover_exit
                 ):
 
@@ -536,30 +541,19 @@ def home():
                         round(pnl, 2),
 
                         "exit_reason":
-
-                        "HARD SL"
-                        if hard_sl_hit
-
+                        "SL HIT"
+                        if sl_hit
                         else
-
-                        "TRAIL SL"
-                        if trailing_sl_hit
-
-                        else
-
                         "EMA EXIT"
                     })
 
                     # ==========================================
-                    # REVERSE ONLY ON HARD SL
+                    # SAME STRIKE REVERSAL
                     # ==========================================
 
                     if (
-
-                        hard_sl_hit
-
+                        sl_hit
                         and
-
                         allow_new_trade
                     ):
 
@@ -643,48 +637,16 @@ def home():
                     + trail_points
                 )
 
-                # ==========================================
-                # TRAILING SL
-                # ==========================================
-
-                trailing_sl_hit = (
-
+                sl_hit = (
                     curr["close"]
                     > trailing_stop
                 )
 
-                # ==========================================
-                # HARD SL
-                # ==========================================
-
-                hard_sl_hit = (
-
-                    curr["close"]
-                    > (
-                        entry_price + 60
-                    )
-                )
-
-                # ==========================================
-                # EMA EXIT
-                # ==========================================
-
                 crossover_exit = buy_signal
 
-                # ==========================================
-                # EXIT CONDITIONS
-                # ==========================================
-
                 if (
-
-                    trailing_sl_hit
-
+                    sl_hit
                     or
-
-                    hard_sl_hit
-
-                    or
-
                     crossover_exit
                 ):
 
@@ -721,30 +683,19 @@ def home():
                         round(pnl, 2),
 
                         "exit_reason":
-
-                        "HARD SL"
-                        if hard_sl_hit
-
+                        "SL HIT"
+                        if sl_hit
                         else
-
-                        "TRAIL SL"
-                        if trailing_sl_hit
-
-                        else
-
                         "EMA EXIT"
                     })
 
                     # ==========================================
-                    # REVERSE ONLY ON HARD SL
+                    # SAME STRIKE REVERSAL
                     # ==========================================
 
                     if (
-
-                        hard_sl_hit
-
+                        sl_hit
                         and
-
                         allow_new_trade
                     ):
 
@@ -832,7 +783,7 @@ def home():
         ">
 
         <h1>
-        📊 EMA + VWAP BACKTEST
+        📊 ASTROLOGY + EMA + VWAP BACKTEST
         </h1>
 
         <hr>
@@ -879,9 +830,7 @@ def home():
 
     except Exception as e:
 
-        return f"""
-        ERROR : {str(e)}
-        """
+        return f"ERROR : {str(e)}"
 
 # ==========================================
 # DOWNLOAD
@@ -912,3 +861,4 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=port
     )
+```
