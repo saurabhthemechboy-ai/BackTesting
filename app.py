@@ -13,7 +13,7 @@ from kiteconnect import KiteConnect
 app = Flask(__name__)
 
 # ==========================================
-# ZERODHA API CONFIG
+# API CONFIG
 # ==========================================
 
 API_KEY = os.getenv(
@@ -38,7 +38,7 @@ def get_access_token():
     ).strip()
 
 # ==========================================
-# LOGIN ROUTE
+# LOGIN
 # ==========================================
 
 @app.route("/login")
@@ -115,7 +115,7 @@ def home():
             )
 
         # ==========================================
-        # ZERODHA CONNECTION
+        # CONNECT ZERODHA
         # ==========================================
 
         kite = KiteConnect(
@@ -134,14 +134,14 @@ def home():
         )
 
         # ==========================================
-        # HISTORICAL DATA
+        # FETCH DATA
         # ==========================================
 
         to_date = datetime.now()
 
         from_date = (
             to_date
-            - timedelta(days=90)
+            - timedelta(days=30)
         )
 
         data = kite.historical_data(
@@ -166,7 +166,7 @@ def home():
         )
 
         # ==========================================
-        # MARKET HOURS
+        # MARKET TIME FILTER
         # ==========================================
 
         df["time"] = df[
@@ -259,7 +259,7 @@ def home():
 
         trades = []
 
-        trail_points = 150
+        trail_points = 80
 
         # ==========================================
         # MAIN LOOP
@@ -274,10 +274,6 @@ def home():
             current_time = curr[
                 "date"
             ].time()
-
-            weekday = curr[
-                "date"
-            ].weekday()
 
             # ==========================================
             # ENTRY CUTOFF
@@ -305,46 +301,6 @@ def home():
             force_squareoff = (
                 current_time
                 >= squareoff_time
-            )
-
-            # ==========================================
-            # ASTROLOGY FILTERS
-            # ==========================================
-
-            trade_allowed_today = True
-
-            # Monday afternoon block
-
-            if weekday == 0:
-
-                monday_cutoff = datetime.strptime(
-                    "12:30",
-                    "%H:%M"
-                ).time()
-
-                if current_time >= monday_cutoff:
-
-                    trade_allowed_today = False
-
-            # Rahu Kaal
-
-            rahu_start = datetime.strptime(
-                "13:30",
-                "%H:%M"
-            ).time()
-
-            rahu_end = datetime.strptime(
-                "15:00",
-                "%H:%M"
-            ).time()
-
-            in_rahu_kaal = (
-
-                current_time >= rahu_start
-
-                and
-
-                current_time <= rahu_end
             )
 
             # ==========================================
@@ -398,14 +354,6 @@ def home():
                 and
 
                 allow_new_trade
-
-                and
-
-                trade_allowed_today
-
-                and
-
-                not in_rahu_kaal
             ):
 
                 if buy_signal:
@@ -511,7 +459,7 @@ def home():
                 )
 
                 # ==========================================
-                # TRAIL SL
+                # TRAILING SL
                 # ==========================================
 
                 trailing_sl_hit = (
@@ -528,7 +476,7 @@ def home():
 
                     curr["close"]
                     < (
-                        entry_price - 120
+                        entry_price - 60
                     )
                 )
 
@@ -696,7 +644,7 @@ def home():
                 )
 
                 # ==========================================
-                # TRAIL SL
+                # TRAILING SL
                 # ==========================================
 
                 trailing_sl_hit = (
@@ -713,7 +661,7 @@ def home():
 
                     curr["close"]
                     > (
-                        entry_price + 120
+                        entry_price + 60
                     )
                 )
 
@@ -884,7 +832,7 @@ def home():
         ">
 
         <h1>
-        📊 ASTROLOGY + EMA + VWAP BACKTEST
+        📊 EMA + VWAP BACKTEST
         </h1>
 
         <hr>
