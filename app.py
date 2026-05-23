@@ -56,14 +56,22 @@ def get_option_token(
 
     try:
 
-        instruments = kite.instruments(
-            "NFO"
-        )
+        # ==========================================
+        # LOAD INSTRUMENTS ONLY ONCE
+        # ==========================================
 
-        instruments_df = pd.DataFrame(
-            instruments
-        )
+        global instruments_df
 
+        if "instruments_df" not in globals():
+
+            instruments = kite.instruments(
+                "NFO"
+            )
+
+            instruments_df = pd.DataFrame(
+                instruments
+            )
+        
         # ==========================================
         # FILTER SENSEX
         # ==========================================
