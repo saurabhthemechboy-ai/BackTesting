@@ -108,10 +108,6 @@ def home():
 
     try:
 
-        # ==========================================
-        # CHECK TOKEN
-        # ==========================================
-
         if get_access_token() == "":
 
             return redirect(
@@ -240,6 +236,8 @@ def home():
         trail_points = 80
 
         hard_sl_points = 60
+
+        lot_size = 20
 
         # ==========================================
         # LOOP
@@ -387,6 +385,25 @@ def home():
                         - entry_price
                     )
 
+                    option_buy_price = round(
+                        entry_price * 0.0025,
+                        2
+                    )
+
+                    option_sell_price = round(
+                        option_buy_price
+                        + (pnl * 0.6),
+                        2
+                    )
+
+                    profit_amount = round(
+                        (
+                            option_sell_price
+                            - option_buy_price
+                        ) * lot_size,
+                        2
+                    )
+
                     trades.append({
 
                         "trade_type":
@@ -413,11 +430,20 @@ def home():
                             2
                         ),
 
+                        "option_buy":
+                        option_buy_price,
+
+                        "option_sell":
+                        option_sell_price,
+
                         "points":
                         round(
                             pnl,
                             2
                         ),
+
+                        "profit_amount":
+                        profit_amount,
 
                         "exit_reason":
                         "DAY END EXIT"
@@ -441,19 +467,11 @@ def home():
                     - trail_points
                 )
 
-                # ==========================================
-                # TRAILING SL
-                # ==========================================
-
                 trailing_sl_hit = (
 
                     curr["close"]
                     < trailing_stop
                 )
-
-                # ==========================================
-                # HARD SL
-                # ==========================================
 
                 hard_sl_hit = (
 
@@ -464,14 +482,10 @@ def home():
                     )
                 )
 
-                # ==========================================
-                # EMA EXIT
-                # ==========================================
-
                 crossover_exit = sell_signal
 
                 # ==========================================
-                # EXIT CONDITIONS
+                # EXIT
                 # ==========================================
 
                 if (
@@ -496,6 +510,25 @@ def home():
                         - entry_price
                     )
 
+                    option_buy_price = round(
+                        entry_price * 0.0025,
+                        2
+                    )
+
+                    option_sell_price = round(
+                        option_buy_price
+                        + (pnl * 0.6),
+                        2
+                    )
+
+                    profit_amount = round(
+                        (
+                            option_sell_price
+                            - option_buy_price
+                        ) * lot_size,
+                        2
+                    )
+
                     trades.append({
 
                         "trade_type":
@@ -522,11 +555,20 @@ def home():
                             2
                         ),
 
+                        "option_buy":
+                        option_buy_price,
+
+                        "option_sell":
+                        option_sell_price,
+
                         "points":
                         round(
                             pnl,
                             2
                         ),
+
+                        "profit_amount":
+                        profit_amount,
 
                         "exit_reason":
 
@@ -595,6 +637,25 @@ def home():
                         - exit_price
                     )
 
+                    option_buy_price = round(
+                        entry_price * 0.0025,
+                        2
+                    )
+
+                    option_sell_price = round(
+                        option_buy_price
+                        + (pnl * 0.6),
+                        2
+                    )
+
+                    profit_amount = round(
+                        (
+                            option_sell_price
+                            - option_buy_price
+                        ) * lot_size,
+                        2
+                    )
+
                     trades.append({
 
                         "trade_type":
@@ -621,11 +682,20 @@ def home():
                             2
                         ),
 
+                        "option_buy":
+                        option_buy_price,
+
+                        "option_sell":
+                        option_sell_price,
+
                         "points":
                         round(
                             pnl,
                             2
                         ),
+
+                        "profit_amount":
+                        profit_amount,
 
                         "exit_reason":
                         "DAY END EXIT"
@@ -649,19 +719,11 @@ def home():
                     + trail_points
                 )
 
-                # ==========================================
-                # TRAILING SL
-                # ==========================================
-
                 trailing_sl_hit = (
 
                     curr["close"]
                     > trailing_stop
                 )
-
-                # ==========================================
-                # HARD SL
-                # ==========================================
 
                 hard_sl_hit = (
 
@@ -672,14 +734,10 @@ def home():
                     )
                 )
 
-                # ==========================================
-                # EMA EXIT
-                # ==========================================
-
                 crossover_exit = buy_signal
 
                 # ==========================================
-                # EXIT CONDITIONS
+                # EXIT
                 # ==========================================
 
                 if (
@@ -704,6 +762,25 @@ def home():
                         - exit_price
                     )
 
+                    option_buy_price = round(
+                        entry_price * 0.0025,
+                        2
+                    )
+
+                    option_sell_price = round(
+                        option_buy_price
+                        + (pnl * 0.6),
+                        2
+                    )
+
+                    profit_amount = round(
+                        (
+                            option_sell_price
+                            - option_buy_price
+                        ) * lot_size,
+                        2
+                    )
+
                     trades.append({
 
                         "trade_type":
@@ -730,11 +807,20 @@ def home():
                             2
                         ),
 
+                        "option_buy":
+                        option_buy_price,
+
+                        "option_sell":
+                        option_sell_price,
+
                         "points":
                         round(
                             pnl,
                             2
                         ),
+
+                        "profit_amount":
+                        profit_amount,
 
                         "exit_reason":
 
@@ -814,7 +900,7 @@ def home():
 
         wins = len(
             trades_df[
-                trades_df["points"] > 0
+                trades_df["profit_amount"] > 0
             ]
         )
 
@@ -823,8 +909,8 @@ def home():
             - wins
         )
 
-        total_points = trades_df[
-            "points"
+        total_profit = trades_df[
+            "profit_amount"
         ].sum()
 
         win_rate = (
@@ -885,8 +971,8 @@ def home():
         </p>
 
         <p>
-        <b>Total Points:</b>
-        {round(total_points, 2)}
+        <b>Total Profit:</b>
+        ₹ {round(total_profit, 2)}
         </p>
 
         <hr>
