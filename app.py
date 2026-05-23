@@ -26,10 +26,12 @@ API_SECRET = os.getenv(
     ""
 ).strip()
 
-ACCESS_TOKEN = os.getenv(
-    "KITE_ACCESS_TOKEN",
-    ""
-).strip()
+def get_access_token():
+
+    return os.getenv(
+        "KITE_ACCESS_TOKEN",
+        ""
+    ).strip()
 
 # ==========================================
 # LOGIN ROUTE
@@ -225,7 +227,7 @@ def home():
         )
 
         kite.set_access_token(
-            ACCESS_TOKEN
+            get_access_token()
         )
 
         profile = kite.profile()
