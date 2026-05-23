@@ -27,7 +27,7 @@ API_SECRET = os.getenv(
 ).strip()
 
 # ==========================================
-# GET ACCESS TOKEN
+# ACCESS TOKEN
 # ==========================================
 
 def get_access_token():
@@ -48,29 +48,12 @@ def login():
         api_key=API_KEY
     )
 
-    login_url = kite.login_url()
-
-    return f"""
-
-    <div style="
-    font-family:sans-serif;
-    padding:40px;
-    ">
-
-    <h1>
-    Zerodha Login
-    </h1>
-
-    <a href="{login_url}">
-    CLICK HERE TO LOGIN
-    </a>
-
-    </div>
-
-    """
+    return redirect(
+        kite.login_url()
+    )
 
 # ==========================================
-# CALLBACK ROUTE
+# CALLBACK
 # ==========================================
 
 @app.route("/callback")
@@ -81,16 +64,6 @@ def callback():
         request_token = request.args.get(
             "request_token"
         )
-
-        if not request_token:
-
-            return """
-
-            <h2>
-            Request Token Missing
-            </h2>
-
-            """
 
         kite = KiteConnect(
             api_key=API_KEY
@@ -105,102 +78,25 @@ def callback():
             "access_token"
         ]
 
-        user_name = data.get(
-            "user_name",
-            "Trader"
-        )
-
         return f"""
 
-        <div style="
-        font-family:sans-serif;
-        padding:40px;
-        max-width:900px;
-        margin:auto;
-        ">
-
-        <h1 style="color:green;">
-        ✅ LOGIN SUCCESSFUL
+        <h1>
+        ACCESS TOKEN
         </h1>
 
-        <hr>
-
-        <p>
-        <b>User:</b>
-        {user_name}
-        </p>
-
-        <p>
-        <b>Copy this ACCESS TOKEN:</b>
-        </p>
-
         <textarea
-        rows="6"
+        rows="8"
         cols="100"
-        style="
-        width:100%;
-        padding:10px;
-        font-size:16px;
-        "
         >
 {access_token}
         </textarea>
-
-        <hr>
-
-        <h3>
-        NEXT STEP
-        </h3>
-
-        <ol>
-        <li>
-        Copy this token
-        </li>
-
-        <li>
-        Open Render
-        </li>
-
-        <li>
-        Go to Environment Variables
-        </li>
-
-        <li>
-        Replace:
-        <b>KITE_ACCESS_TOKEN</b>
-        </li>
-
-        <li>
-        Save Changes
-        </li>
-
-        <li>
-        Deploy Latest Commit
-        </li>
-        </ol>
-
-        <hr>
-
-        <a href="/">
-        Go To Backtest App
-        </a>
-
-        </div>
 
         """
 
     except Exception as e:
 
         return f"""
-
-        <h1 style='color:red;'>
-        LOGIN ERROR
-        </h1>
-
-        <pre>
-        {str(e)}
-        </pre>
-
+        ERROR : {str(e)}
         """
 
 # ==========================================
@@ -212,10 +108,6 @@ def home():
 
     try:
 
-        # ==========================================
-        # CHECK ACCESS TOKEN
-        # ==========================================
-
         if get_access_token() == "":
 
             return redirect(
@@ -223,7 +115,7 @@ def home():
             )
 
         # ==========================================
-        # CONNECT ZERODHA
+        # ZERODHA CONNECTION
         # ==========================================
 
         kite = KiteConnect(
@@ -242,14 +134,14 @@ def home():
         )
 
         # ==========================================
-        # FETCH HISTORICAL DATA
+        # HISTORICAL DATA
         # ==========================================
 
         to_date = datetime.now()
 
         from_date = (
             to_date
-            - timedelta(days=30)
+            - timedelta(days=90)
         )
 
         data = kite.historical_data(
@@ -261,13 +153,7 @@ def home():
 
         if not data:
 
-            return """
-
-            <h2>
-            No Historical Data
-            </h2>
-
-            """
+            return "No Historical Data"
 
         # ==========================================
         # DATAFRAME
@@ -280,7 +166,7 @@ def home():
         )
 
         # ==========================================
-        # MARKET TIME FILTER
+        # MARKET HOURS
         # ==========================================
 
         df["time"] = df[
@@ -293,7 +179,7 @@ def home():
         ).time()
 
         market_end = datetime.strptime(
-            "15:00",
+            "15:25",
             "%H:%M"
         ).time()
 
@@ -310,7 +196,7 @@ def home():
         ]
 
         # ==========================================
-        # EMA CALCULATION
+        # EMA
         # ==========================================
 
         df["EMA9"] = df[
@@ -326,6 +212,32 @@ def home():
             span=21,
             adjust=False
         ).mean()
+
+        # ==========================================
+        # VWAP
+        # ==========================================
+
+        df["date_only"] = df[
+            "date"
+        ].dt.date
+
+        df["vol_price"] = (
+            df["close"]
+            * df["volume"]
+        )
+
+        df["cum_vol"] = df.groupby(
+            "date_only"
+        )["volume"].cumsum()
+
+        df["cum_vol_price"] = df.groupby(
+            "date_only"
+        )["vol_price"].cumsum()
+
+        df["VWAP"] = (
+            df["cum_vol_price"]
+            / df["cum_vol"]
+        )
 
         df = df.dropna().reset_index(
             drop=True
@@ -343,9 +255,11 @@ def home():
 
         highest_price = 0
 
-        trail_points = 150
+        current_strike = None
 
         trades = []
+
+        trail_points = 150
 
         # ==========================================
         # MAIN LOOP
@@ -357,22 +271,80 @@ def home():
 
             curr = df.iloc[i]
 
-            # ==========================================
-            # NO TRADE AFTER 14:45
-            # ==========================================
-
             current_time = curr[
                 "date"
             ].time()
 
-            cutoff_time = datetime.strptime(
-                "14:45",
+            weekday = curr[
+                "date"
+            ].weekday()
+
+            # ==========================================
+            # ENTRY CUTOFF
+            # ==========================================
+
+            entry_cutoff = datetime.strptime(
+                "15:00",
                 "%H:%M"
             ).time()
 
             allow_new_trade = (
                 current_time
-                < cutoff_time
+                < entry_cutoff
+            )
+
+            # ==========================================
+            # FORCE EXIT
+            # ==========================================
+
+            squareoff_time = datetime.strptime(
+                "15:25",
+                "%H:%M"
+            ).time()
+
+            force_squareoff = (
+                current_time
+                >= squareoff_time
+            )
+
+            # ==========================================
+            # ASTROLOGY FILTERS
+            # ==========================================
+
+            trade_allowed_today = True
+
+            # Monday afternoon block
+
+            if weekday == 0:
+
+                monday_cutoff = datetime.strptime(
+                    "12:30",
+                    "%H:%M"
+                ).time()
+
+                if current_time >= monday_cutoff:
+
+                    trade_allowed_today = False
+
+            # Rahu Kaal
+
+            rahu_start = datetime.strptime(
+                "13:30",
+                "%H:%M"
+            ).time()
+
+            rahu_end = datetime.strptime(
+                "15:00",
+                "%H:%M"
+            ).time()
+
+            in_rahu_kaal = (
+
+                current_time >= rahu_start
+
+                and
+
+                current_time <= rahu_end
             )
 
             # ==========================================
@@ -391,10 +363,8 @@ def home():
 
                 and
 
-                (
-                    curr["high"]
-                    - curr["low"]
-                ) > 20
+                curr["close"]
+                > curr["VWAP"]
             )
 
             # ==========================================
@@ -413,10 +383,8 @@ def home():
 
                 and
 
-                (
-                    curr["high"]
-                    - curr["low"]
-                ) > 20
+                curr["close"]
+                < curr["VWAP"]
             )
 
             # ==========================================
@@ -424,9 +392,20 @@ def home():
             # ==========================================
 
             if (
+
                 position is None
+
                 and
+
                 allow_new_trade
+
+                and
+
+                trade_allowed_today
+
+                and
+
+                not in_rahu_kaal
             ):
 
                 if buy_signal:
@@ -445,6 +424,10 @@ def home():
                         "close"
                     ]
 
+                    current_strike = round(
+                        curr["close"] / 100
+                    ) * 100
+
                 elif sell_signal:
 
                     position = "SELL"
@@ -461,11 +444,61 @@ def home():
                         "close"
                     ]
 
+                    current_strike = round(
+                        curr["close"] / 100
+                    ) * 100
+
             # ==========================================
             # BUY POSITION
             # ==========================================
 
             elif position == "BUY":
+
+                # ==========================================
+                # DAY END EXIT
+                # ==========================================
+
+                if force_squareoff:
+
+                    exit_price = curr[
+                        "close"
+                    ]
+
+                    pnl = (
+                        exit_price
+                        - entry_price
+                    )
+
+                    trades.append({
+
+                        "trade_type":
+                        "BUY CE",
+
+                        "strike":
+                        f"{current_strike} CE",
+
+                        "entry_time":
+                        entry_time,
+
+                        "exit_time":
+                        curr["date"],
+
+                        "entry_spot":
+                        round(entry_price, 2),
+
+                        "exit_spot":
+                        round(exit_price, 2),
+
+                        "points":
+                        round(pnl, 2),
+
+                        "exit_reason":
+                        "DAY END EXIT"
+                    })
+
+                    position = None
+
+                    continue
 
                 highest_price = max(
                     highest_price,
@@ -477,16 +510,48 @@ def home():
                     - trail_points
                 )
 
-                sl_hit = (
+                # ==========================================
+                # TRAIL SL
+                # ==========================================
+
+                trailing_sl_hit = (
+
                     curr["close"]
                     < trailing_stop
                 )
 
+                # ==========================================
+                # HARD SL
+                # ==========================================
+
+                hard_sl_hit = (
+
+                    curr["close"]
+                    < (
+                        entry_price - 120
+                    )
+                )
+
+                # ==========================================
+                # EMA EXIT
+                # ==========================================
+
                 crossover_exit = sell_signal
 
+                # ==========================================
+                # EXIT CONDITIONS
+                # ==========================================
+
                 if (
-                    sl_hit
+
+                    trailing_sl_hit
+
                     or
+
+                    hard_sl_hit
+
+                    or
+
                     crossover_exit
                 ):
 
@@ -494,47 +559,10 @@ def home():
                         "close"
                     ]
 
-                    exit_time = curr[
-                        "date"
-                    ]
-
                     pnl = (
                         exit_price
                         - entry_price
                     )
-
-                    strike = round(
-                        entry_price / 100
-                    ) * 100
-
-                    option_entry = round(
-                        entry_price * 0.0025,
-                        2
-                    )
-
-                    option_exit = (
-                        option_entry
-                        + (pnl * 0.6)
-                    )
-
-                    max_loss = (
-                        option_entry * 0.10
-                    )
-
-                    minimum_exit = (
-                        option_entry - max_loss
-                    )
-
-                    if option_exit < minimum_exit:
-
-                        option_exit = minimum_exit
-
-                    lot_size = 20
-
-                    real_pnl = (
-                        option_exit
-                        - option_entry
-                    ) * lot_size
 
                     trades.append({
 
@@ -542,64 +570,48 @@ def home():
                         "BUY CE",
 
                         "strike":
-                        f"{strike} CE",
+                        f"{current_strike} CE",
 
                         "entry_time":
                         entry_time,
 
                         "exit_time":
-                        exit_time,
+                        curr["date"],
 
-                        "spot_entry":
-                        round(
-                            entry_price,
-                            2
-                        ),
+                        "entry_spot":
+                        round(entry_price, 2),
 
-                        "spot_exit":
-                        round(
-                            exit_price,
-                            2
-                        ),
-
-                        "option_buy":
-                        round(
-                            option_entry,
-                            2
-                        ),
-
-                        "option_sell":
-                        round(
-                            option_exit,
-                            2
-                        ),
+                        "exit_spot":
+                        round(exit_price, 2),
 
                         "points":
-                        round(
-                            pnl,
-                            2
-                        ),
-
-                        "real_pnl":
-                        round(
-                            real_pnl,
-                            2
-                        ),
+                        round(pnl, 2),
 
                         "exit_reason":
-                        "SL HIT"
-                        if sl_hit
+
+                        "HARD SL"
+                        if hard_sl_hit
+
                         else
+
+                        "TRAIL SL"
+                        if trailing_sl_hit
+
+                        else
+
                         "EMA EXIT"
                     })
 
                     # ==========================================
-                    # REVERSE ONLY BEFORE 14:45
+                    # REVERSE ONLY ON HARD SL
                     # ==========================================
 
                     if (
-                        sl_hit
+
+                        hard_sl_hit
+
                         and
+
                         allow_new_trade
                     ):
 
@@ -627,6 +639,52 @@ def home():
 
             elif position == "SELL":
 
+                # ==========================================
+                # DAY END EXIT
+                # ==========================================
+
+                if force_squareoff:
+
+                    exit_price = curr[
+                        "close"
+                    ]
+
+                    pnl = (
+                        entry_price
+                        - exit_price
+                    )
+
+                    trades.append({
+
+                        "trade_type":
+                        "BUY PE",
+
+                        "strike":
+                        f"{current_strike} PE",
+
+                        "entry_time":
+                        entry_time,
+
+                        "exit_time":
+                        curr["date"],
+
+                        "entry_spot":
+                        round(entry_price, 2),
+
+                        "exit_spot":
+                        round(exit_price, 2),
+
+                        "points":
+                        round(pnl, 2),
+
+                        "exit_reason":
+                        "DAY END EXIT"
+                    })
+
+                    position = None
+
+                    continue
+
                 highest_price = min(
                     highest_price,
                     curr["close"]
@@ -637,16 +695,48 @@ def home():
                     + trail_points
                 )
 
-                sl_hit = (
+                # ==========================================
+                # TRAIL SL
+                # ==========================================
+
+                trailing_sl_hit = (
+
                     curr["close"]
                     > trailing_stop
                 )
 
+                # ==========================================
+                # HARD SL
+                # ==========================================
+
+                hard_sl_hit = (
+
+                    curr["close"]
+                    > (
+                        entry_price + 120
+                    )
+                )
+
+                # ==========================================
+                # EMA EXIT
+                # ==========================================
+
                 crossover_exit = buy_signal
 
+                # ==========================================
+                # EXIT CONDITIONS
+                # ==========================================
+
                 if (
-                    sl_hit
+
+                    trailing_sl_hit
+
                     or
+
+                    hard_sl_hit
+
+                    or
+
                     crossover_exit
                 ):
 
@@ -654,47 +744,10 @@ def home():
                         "close"
                     ]
 
-                    exit_time = curr[
-                        "date"
-                    ]
-
                     pnl = (
                         entry_price
                         - exit_price
                     )
-
-                    strike = round(
-                        entry_price / 100
-                    ) * 100
-
-                    option_entry = round(
-                        entry_price * 0.0025,
-                        2
-                    )
-
-                    option_exit = (
-                        option_entry
-                        + (pnl * 0.6)
-                    )
-
-                    max_loss = (
-                        option_entry * 0.10
-                    )
-
-                    minimum_exit = (
-                        option_entry - max_loss
-                    )
-
-                    if option_exit < minimum_exit:
-
-                        option_exit = minimum_exit
-
-                    lot_size = 20
-
-                    real_pnl = (
-                        option_exit
-                        - option_entry
-                    ) * lot_size
 
                     trades.append({
 
@@ -702,64 +755,48 @@ def home():
                         "BUY PE",
 
                         "strike":
-                        f"{strike} PE",
+                        f"{current_strike} PE",
 
                         "entry_time":
                         entry_time,
 
                         "exit_time":
-                        exit_time,
+                        curr["date"],
 
-                        "spot_entry":
-                        round(
-                            entry_price,
-                            2
-                        ),
+                        "entry_spot":
+                        round(entry_price, 2),
 
-                        "spot_exit":
-                        round(
-                            exit_price,
-                            2
-                        ),
-
-                        "option_buy":
-                        round(
-                            option_entry,
-                            2
-                        ),
-
-                        "option_sell":
-                        round(
-                            option_exit,
-                            2
-                        ),
+                        "exit_spot":
+                        round(exit_price, 2),
 
                         "points":
-                        round(
-                            pnl,
-                            2
-                        ),
-
-                        "real_pnl":
-                        round(
-                            real_pnl,
-                            2
-                        ),
+                        round(pnl, 2),
 
                         "exit_reason":
-                        "SL HIT"
-                        if sl_hit
+
+                        "HARD SL"
+                        if hard_sl_hit
+
                         else
+
+                        "TRAIL SL"
+                        if trailing_sl_hit
+
+                        else
+
                         "EMA EXIT"
                     })
 
                     # ==========================================
-                    # REVERSE ONLY BEFORE 14:45
+                    # REVERSE ONLY ON HARD SL
                     # ==========================================
 
                     if (
-                        sl_hit
+
+                        hard_sl_hit
+
                         and
+
                         allow_new_trade
                     ):
 
@@ -791,13 +828,7 @@ def home():
 
         if trades_df.empty:
 
-            return """
-
-            <h2>
-            No Trades Generated
-            </h2>
-
-            """
+            return "No Trades Generated"
 
         trades_df["entry_time"] = pd.to_datetime(
             trades_df["entry_time"]
@@ -813,7 +844,7 @@ def home():
 
         wins = len(
             trades_df[
-                trades_df["real_pnl"] > 0
+                trades_df["points"] > 0
             ]
         )
 
@@ -822,8 +853,8 @@ def home():
             - wins
         )
 
-        total_pnl = trades_df[
-            "real_pnl"
+        total_points = trades_df[
+            "points"
         ].sum()
 
         win_rate = (
@@ -843,57 +874,55 @@ def home():
             index=False
         )
 
-        # ==========================================
-        # REPORT
-        # ==========================================
-
         return f"""
 
         <div style="
         font-family:sans-serif;
-        max-width:1000px;
-        margin:auto;
         padding:30px;
-        background:white;
-        border-radius:10px;
-        box-shadow:0 0 10px #ddd;
+        max-width:900px;
+        margin:auto;
         ">
 
         <h1>
-        📊 SENSEX OPTION BACKTEST REPORT
+        📊 ASTROLOGY + EMA + VWAP BACKTEST
         </h1>
 
         <hr>
 
         <p>
-        <b>User:</b> {user_name}
+        <b>User:</b>
+        {user_name}
         </p>
 
         <p>
-        <b>Total Trades:</b> {total_trades}
+        <b>Total Trades:</b>
+        {total_trades}
         </p>
 
         <p>
-        <b>Winning Trades:</b> {wins}
+        <b>Winning Trades:</b>
+        {wins}
         </p>
 
         <p>
-        <b>Losing Trades:</b> {losses}
+        <b>Losing Trades:</b>
+        {losses}
         </p>
 
         <p>
-        <b>Win Rate:</b> {win_rate:.2f}%
+        <b>Win Rate:</b>
+        {win_rate:.2f}%
         </p>
 
         <p>
-        <b>Total Option PnL:</b>
-        ₹ {round(total_pnl, 2)}
+        <b>Total Points:</b>
+        {round(total_points, 2)}
         </p>
 
         <hr>
 
         <a href="/download">
-        📥 Download Excel Report
+        📥 DOWNLOAD EXCEL REPORT
         </a>
 
         </div>
@@ -903,19 +932,11 @@ def home():
     except Exception as e:
 
         return f"""
-
-        <h1 style='color:red;'>
-        ERROR
-        </h1>
-
-        <pre>
-        {str(e)}
-        </pre>
-
+        ERROR : {str(e)}
         """
 
 # ==========================================
-# DOWNLOAD EXCEL
+# DOWNLOAD
 # ==========================================
 
 @app.route("/download")
