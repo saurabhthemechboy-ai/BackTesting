@@ -790,7 +790,7 @@ def home():
             trades
         )
 
-        if trades_df.empty():
+        if trades_df.empty:
 
             return """
 
