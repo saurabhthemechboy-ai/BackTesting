@@ -1,6 +1,3 @@
-# Full Intraday Astrology + EMA + VWAP Backtesting Engine
-
-```python
 import os
 from datetime import datetime, timedelta
 
@@ -30,7 +27,7 @@ API_SECRET = os.getenv(
 ).strip()
 
 # ==========================================
-# ACCESS TOKEN
+# GET ACCESS TOKEN
 # ==========================================
 
 def get_access_token():
@@ -51,9 +48,26 @@ def login():
         api_key=API_KEY
     )
 
-    return redirect(
-        kite.login_url()
-    )
+    login_url = kite.login_url()
+
+    return f"""
+
+    <div style="
+    font-family:sans-serif;
+    padding:40px;
+    ">
+
+    <h1>
+    Zerodha Login
+    </h1>
+
+    <a href="{login_url}">
+    CLICK HERE TO LOGIN
+    </a>
+
+    </div>
+
+    """
 
 # ==========================================
 # CALLBACK ROUTE
@@ -68,6 +82,16 @@ def callback():
             "request_token"
         )
 
+        if not request_token:
+
+            return """
+
+            <h2>
+            Request Token Missing
+            </h2>
+
+            """
+
         kite = KiteConnect(
             api_key=API_KEY
         )
@@ -81,24 +105,103 @@ def callback():
             "access_token"
         ]
 
+        user_name = data.get(
+            "user_name",
+            "Trader"
+        )
+
         return f"""
 
-        <h1>
-        ACCESS TOKEN
+        <div style="
+        font-family:sans-serif;
+        padding:40px;
+        max-width:900px;
+        margin:auto;
+        ">
+
+        <h1 style="color:green;">
+        ✅ LOGIN SUCCESSFUL
         </h1>
 
+        <hr>
+
+        <p>
+        <b>User:</b>
+        {user_name}
+        </p>
+
+        <p>
+        <b>Copy this ACCESS TOKEN:</b>
+        </p>
+
         <textarea
-        rows="8"
+        rows="6"
         cols="100"
+        style="
+        width:100%;
+        padding:10px;
+        font-size:16px;
+        "
         >
 {access_token}
         </textarea>
+
+        <hr>
+
+        <h3>
+        NEXT STEP
+        </h3>
+
+        <ol>
+        <li>
+        Copy this token
+        </li>
+
+        <li>
+        Open Render
+        </li>
+
+        <li>
+        Go to Environment Variables
+        </li>
+
+        <li>
+        Replace:
+        <b>KITE_ACCESS_TOKEN</b>
+        </li>
+
+        <li>
+        Save Changes
+        </li>
+
+        <li>
+        Deploy Latest Commit
+        </li>
+        </ol>
+
+        <hr>
+
+        <a href="/">
+        Go To Backtest App
+        </a>
+
+        </div>
 
         """
 
     except Exception as e:
 
-        return f"ERROR : {str(e)}"
+        return f"""
+
+        <h1 style='color:red;'>
+        LOGIN ERROR
+        </h1>
+
+        <pre>
+        {str(e)}
+        </pre>
+
+        """
 
 # ==========================================
 # HOME
@@ -108,6 +211,10 @@ def callback():
 def home():
 
     try:
+
+        # ==========================================
+        # CHECK ACCESS TOKEN
+        # ==========================================
 
         if get_access_token() == "":
 
@@ -135,14 +242,14 @@ def home():
         )
 
         # ==========================================
-        # HISTORICAL DATA
+        # FETCH HISTORICAL DATA
         # ==========================================
 
         to_date = datetime.now()
 
         from_date = (
             to_date
-            - timedelta(days=90)
+            - timedelta(days=30)
         )
 
         data = kite.historical_data(
@@ -154,7 +261,13 @@ def home():
 
         if not data:
 
-            return "No Historical Data"
+            return """
+
+            <h2>
+            No Historical Data
+            </h2>
+
+            """
 
         # ==========================================
         # DATAFRAME
@@ -167,7 +280,7 @@ def home():
         )
 
         # ==========================================
-        # MARKET HOURS FILTER
+        # MARKET TIME FILTER
         # ==========================================
 
         df["time"] = df[
@@ -180,7 +293,7 @@ def home():
         ).time()
 
         market_end = datetime.strptime(
-            "15:25",
+            "15:00",
             "%H:%M"
         ).time()
 
@@ -197,7 +310,7 @@ def home():
         ]
 
         # ==========================================
-        # EMA
+        # EMA CALCULATION
         # ==========================================
 
         df["EMA9"] = df[
@@ -213,32 +326,6 @@ def home():
             span=21,
             adjust=False
         ).mean()
-
-        # ==========================================
-        # VWAP
-        # ==========================================
-
-        df["date_only"] = df[
-            "date"
-        ].dt.date
-
-        df["vol_price"] = (
-            df["close"]
-            * df["volume"]
-        )
-
-        df["cum_vol"] = df.groupby(
-            "date_only"
-        )["volume"].cumsum()
-
-        df["cum_vol_price"] = df.groupby(
-            "date_only"
-        )["vol_price"].cumsum()
-
-        df["VWAP"] = (
-            df["cum_vol_price"]
-            / df["cum_vol"]
-        )
 
         df = df.dropna().reset_index(
             drop=True
@@ -256,14 +343,12 @@ def home():
 
         highest_price = 0
 
-        current_strike = None
+        trail_points = 150
 
         trades = []
 
-        trail_points = 150
-
         # ==========================================
-        # LOOP
+        # MAIN LOOP
         # ==========================================
 
         for i in range(1, len(df)):
@@ -272,79 +357,26 @@ def home():
 
             curr = df.iloc[i]
 
+            # ==========================================
+            # NO TRADE AFTER 14:45
+            # ==========================================
+
             current_time = curr[
                 "date"
             ].time()
 
-            weekday = curr[
-                "date"
-            ].weekday()
-
-            # ==========================================
-            # ENTRY CUTOFF
-            # ==========================================
-
-            entry_cutoff = datetime.strptime(
-                "15:00",
+            cutoff_time = datetime.strptime(
+                "14:45",
                 "%H:%M"
             ).time()
 
             allow_new_trade = (
                 current_time
-                < entry_cutoff
+                < cutoff_time
             )
 
             # ==========================================
-            # FORCE EXIT TIME
-            # ==========================================
-
-            squareoff_time = datetime.strptime(
-                "15:25",
-                "%H:%M"
-            ).time()
-
-            force_squareoff = (
-                current_time
-                >= squareoff_time
-            )
-
-            # ==========================================
-            # ASTROLOGY FILTERS
-            # ==========================================
-
-            trade_allowed_today = True
-
-            # Monday afternoon weak
-            if weekday == 0:
-
-                monday_cutoff = datetime.strptime(
-                    "12:30",
-                    "%H:%M"
-                ).time()
-
-                if current_time >= monday_cutoff:
-
-                    trade_allowed_today = False
-
-            # Rahu Kaal block
-            rahu_start = datetime.strptime(
-                "13:30",
-                "%H:%M"
-            ).time()
-
-            rahu_end = datetime.strptime(
-                "15:00",
-                "%H:%M"
-            ).time()
-
-            in_rahu_kaal = (
-                current_time >= rahu_start
-                and
-                current_time <= rahu_end
-            )
-
-            # ==========================================
-            # SIGNALS
+            # BUY SIGNAL
             # ==========================================
 
             buy_signal = (
@@ -359,9 +391,15 @@ def home():
 
                 and
 
-                curr["close"]
-                > curr["VWAP"]
+                (
+                    curr["high"]
+                    - curr["low"]
+                ) > 20
             )
+
+            # ==========================================
+            # SELL SIGNAL
+            # ==========================================
 
             sell_signal = (
 
@@ -375,8 +413,10 @@ def home():
 
                 and
 
-                curr["close"]
-                < curr["VWAP"]
+                (
+                    curr["high"]
+                    - curr["low"]
+                ) > 20
             )
 
             # ==========================================
@@ -387,10 +427,6 @@ def home():
                 position is None
                 and
                 allow_new_trade
-                and
-                trade_allowed_today
-                and
-                not in_rahu_kaal
             ):
 
                 if buy_signal:
@@ -409,10 +445,6 @@ def home():
                         "close"
                     ]
 
-                    current_strike = round(
-                        curr["close"] / 100
-                    ) * 100
-
                 elif sell_signal:
 
                     position = "SELL"
@@ -429,61 +461,11 @@ def home():
                         "close"
                     ]
 
-                    current_strike = round(
-                        curr["close"] / 100
-                    ) * 100
-
             # ==========================================
             # BUY POSITION
             # ==========================================
 
             elif position == "BUY":
-
-                # ==========================================
-                # DAY END EXIT
-                # ==========================================
-
-                if force_squareoff:
-
-                    exit_price = curr[
-                        "close"
-                    ]
-
-                    pnl = (
-                        exit_price
-                        - entry_price
-                    )
-
-                    trades.append({
-
-                        "trade_type":
-                        "BUY CE",
-
-                        "strike":
-                        f"{current_strike} CE",
-
-                        "entry_time":
-                        entry_time,
-
-                        "exit_time":
-                        curr["date"],
-
-                        "entry_spot":
-                        round(entry_price, 2),
-
-                        "exit_spot":
-                        round(exit_price, 2),
-
-                        "points":
-                        round(pnl, 2),
-
-                        "exit_reason":
-                        "DAY END EXIT"
-                    })
-
-                    position = None
-
-                    continue
 
                 highest_price = max(
                     highest_price,
@@ -512,10 +494,47 @@ def home():
                         "close"
                     ]
 
+                    exit_time = curr[
+                        "date"
+                    ]
+
                     pnl = (
                         exit_price
                         - entry_price
                     )
+
+                    strike = round(
+                        entry_price / 100
+                    ) * 100
+
+                    option_entry = round(
+                        entry_price * 0.0025,
+                        2
+                    )
+
+                    option_exit = (
+                        option_entry
+                        + (pnl * 0.6)
+                    )
+
+                    max_loss = (
+                        option_entry * 0.10
+                    )
+
+                    minimum_exit = (
+                        option_entry - max_loss
+                    )
+
+                    if option_exit < minimum_exit:
+
+                        option_exit = minimum_exit
+
+                    lot_size = 20
+
+                    real_pnl = (
+                        option_exit
+                        - option_entry
+                    ) * lot_size
 
                     trades.append({
 
@@ -523,22 +542,49 @@ def home():
                         "BUY CE",
 
                         "strike":
-                        f"{current_strike} CE",
+                        f"{strike} CE",
 
                         "entry_time":
                         entry_time,
 
                         "exit_time":
-                        curr["date"],
+                        exit_time,
 
-                        "entry_spot":
-                        round(entry_price, 2),
+                        "spot_entry":
+                        round(
+                            entry_price,
+                            2
+                        ),
 
-                        "exit_spot":
-                        round(exit_price, 2),
+                        "spot_exit":
+                        round(
+                            exit_price,
+                            2
+                        ),
+
+                        "option_buy":
+                        round(
+                            option_entry,
+                            2
+                        ),
+
+                        "option_sell":
+                        round(
+                            option_exit,
+                            2
+                        ),
 
                         "points":
-                        round(pnl, 2),
+                        round(
+                            pnl,
+                            2
+                        ),
+
+                        "real_pnl":
+                        round(
+                            real_pnl,
+                            2
+                        ),
 
                         "exit_reason":
                         "SL HIT"
@@ -548,7 +594,7 @@ def home():
                     })
 
                     # ==========================================
-                    # SAME STRIKE REVERSAL
+                    # REVERSE ONLY BEFORE 14:45
                     # ==========================================
 
                     if (
@@ -581,52 +627,6 @@ def home():
 
             elif position == "SELL":
 
-                # ==========================================
-                # DAY END EXIT
-                # ==========================================
-
-                if force_squareoff:
-
-                    exit_price = curr[
-                        "close"
-                    ]
-
-                    pnl = (
-                        entry_price
-                        - exit_price
-                    )
-
-                    trades.append({
-
-                        "trade_type":
-                        "BUY PE",
-
-                        "strike":
-                        f"{current_strike} PE",
-
-                        "entry_time":
-                        entry_time,
-
-                        "exit_time":
-                        curr["date"],
-
-                        "entry_spot":
-                        round(entry_price, 2),
-
-                        "exit_spot":
-                        round(exit_price, 2),
-
-                        "points":
-                        round(pnl, 2),
-
-                        "exit_reason":
-                        "DAY END EXIT"
-                    })
-
-                    position = None
-
-                    continue
-
                 highest_price = min(
                     highest_price,
                     curr["close"]
@@ -654,10 +654,47 @@ def home():
                         "close"
                     ]
 
+                    exit_time = curr[
+                        "date"
+                    ]
+
                     pnl = (
                         entry_price
                         - exit_price
                     )
+
+                    strike = round(
+                        entry_price / 100
+                    ) * 100
+
+                    option_entry = round(
+                        entry_price * 0.0025,
+                        2
+                    )
+
+                    option_exit = (
+                        option_entry
+                        + (pnl * 0.6)
+                    )
+
+                    max_loss = (
+                        option_entry * 0.10
+                    )
+
+                    minimum_exit = (
+                        option_entry - max_loss
+                    )
+
+                    if option_exit < minimum_exit:
+
+                        option_exit = minimum_exit
+
+                    lot_size = 20
+
+                    real_pnl = (
+                        option_exit
+                        - option_entry
+                    ) * lot_size
 
                     trades.append({
 
@@ -665,22 +702,49 @@ def home():
                         "BUY PE",
 
                         "strike":
-                        f"{current_strike} PE",
+                        f"{strike} PE",
 
                         "entry_time":
                         entry_time,
 
                         "exit_time":
-                        curr["date"],
+                        exit_time,
 
-                        "entry_spot":
-                        round(entry_price, 2),
+                        "spot_entry":
+                        round(
+                            entry_price,
+                            2
+                        ),
 
-                        "exit_spot":
-                        round(exit_price, 2),
+                        "spot_exit":
+                        round(
+                            exit_price,
+                            2
+                        ),
+
+                        "option_buy":
+                        round(
+                            option_entry,
+                            2
+                        ),
+
+                        "option_sell":
+                        round(
+                            option_exit,
+                            2
+                        ),
 
                         "points":
-                        round(pnl, 2),
+                        round(
+                            pnl,
+                            2
+                        ),
+
+                        "real_pnl":
+                        round(
+                            real_pnl,
+                            2
+                        ),
 
                         "exit_reason":
                         "SL HIT"
@@ -690,7 +754,7 @@ def home():
                     })
 
                     # ==========================================
-                    # SAME STRIKE REVERSAL
+                    # REVERSE ONLY BEFORE 14:45
                     # ==========================================
 
                     if (
@@ -727,7 +791,13 @@ def home():
 
         if trades_df.empty:
 
-            return "No Trades Generated"
+            return """
+
+            <h2>
+            No Trades Generated
+            </h2>
+
+            """
 
         trades_df["entry_time"] = pd.to_datetime(
             trades_df["entry_time"]
@@ -743,7 +813,7 @@ def home():
 
         wins = len(
             trades_df[
-                trades_df["points"] > 0
+                trades_df["real_pnl"] > 0
             ]
         )
 
@@ -752,8 +822,8 @@ def home():
             - wins
         )
 
-        total_points = trades_df[
-            "points"
+        total_pnl = trades_df[
+            "real_pnl"
         ].sum()
 
         win_rate = (
@@ -773,55 +843,57 @@ def home():
             index=False
         )
 
+        # ==========================================
+        # REPORT
+        # ==========================================
+
         return f"""
 
         <div style="
         font-family:sans-serif;
-        padding:30px;
-        max-width:900px;
+        max-width:1000px;
         margin:auto;
+        padding:30px;
+        background:white;
+        border-radius:10px;
+        box-shadow:0 0 10px #ddd;
         ">
 
         <h1>
-        📊 ASTROLOGY + EMA + VWAP BACKTEST
+        📊 SENSEX OPTION BACKTEST REPORT
         </h1>
 
         <hr>
 
         <p>
-        <b>User:</b>
-        {user_name}
+        <b>User:</b> {user_name}
         </p>
 
         <p>
-        <b>Total Trades:</b>
-        {total_trades}
+        <b>Total Trades:</b> {total_trades}
         </p>
 
         <p>
-        <b>Winning Trades:</b>
-        {wins}
+        <b>Winning Trades:</b> {wins}
         </p>
 
         <p>
-        <b>Losing Trades:</b>
-        {losses}
+        <b>Losing Trades:</b> {losses}
         </p>
 
         <p>
-        <b>Win Rate:</b>
-        {win_rate:.2f}%
+        <b>Win Rate:</b> {win_rate:.2f}%
         </p>
 
         <p>
-        <b>Total Points:</b>
-        {round(total_points, 2)}
+        <b>Total Option PnL:</b>
+        ₹ {round(total_pnl, 2)}
         </p>
 
         <hr>
 
         <a href="/download">
-        📥 DOWNLOAD EXCEL REPORT
+        📥 Download Excel Report
         </a>
 
         </div>
@@ -830,10 +902,20 @@ def home():
 
     except Exception as e:
 
-        return f"ERROR : {str(e)}"
+        return f"""
+
+        <h1 style='color:red;'>
+        ERROR
+        </h1>
+
+        <pre>
+        {str(e)}
+        </pre>
+
+        """
 
 # ==========================================
-# DOWNLOAD
+# DOWNLOAD EXCEL
 # ==========================================
 
 @app.route("/download")
@@ -861,4 +943,3 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=port
     )
-```
