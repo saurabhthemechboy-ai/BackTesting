@@ -13,7 +13,7 @@ from kiteconnect import KiteConnect
 app = Flask(__name__)
 
 # ==========================================
-# API CONFIG
+# ZERODHA API CONFIG
 # ==========================================
 
 API_KEY = os.getenv(
@@ -79,9 +79,11 @@ def callback():
         if not request_token:
 
             return """
+
             <h2>
             Request Token Missing
             </h2>
+
             """
 
         kite = KiteConnect(
@@ -97,37 +99,84 @@ def callback():
             "access_token"
         ]
 
+        user_name = data.get(
+            "user_name",
+            "Trader"
+        )
+
         return f"""
 
         <div style="
         font-family:sans-serif;
         padding:40px;
+        max-width:900px;
+        margin:auto;
         ">
 
-        <h1>
-        ACCESS TOKEN GENERATED
+        <h1 style="color:green;">
+        ✅ LOGIN SUCCESSFUL
         </h1>
 
         <hr>
 
         <p>
-        Copy this token and paste into:
+        <b>User:</b>
+        {user_name}
         </p>
 
-        <h3>
-        Render → Environment Variables
-        </h3>
+        <p>
+        <b>Copy this ACCESS TOKEN:</b>
+        </p>
 
-        <hr>
-
-        <textarea rows="6" cols="100">
+        <textarea
+        rows="6"
+        cols="100"
+        style="
+        width:100%;
+        padding:10px;
+        font-size:16px;
+        "
+        >
 {access_token}
         </textarea>
 
         <hr>
 
+        <h3>
+        NEXT STEP
+        </h3>
+
+        <ol>
+        <li>
+        Copy this token
+        </li>
+
+        <li>
+        Open Render
+        </li>
+
+        <li>
+        Go to Environment Variables
+        </li>
+
+        <li>
+        Replace:
+        <b>KITE_ACCESS_TOKEN</b>
+        </li>
+
+        <li>
+        Save Changes
+        </li>
+
+        <li>
+        Manual Deploy → Clear Cache & Deploy
+        </li>
+        </ol>
+
+        <hr>
+
         <a href="/">
-        Go To Backtest
+        Go To Backtest App
         </a>
 
         </div>
@@ -158,7 +207,7 @@ def home():
     try:
 
         # ==========================================
-        # CHECK ACCESS TOKEN
+        # ACCESS TOKEN CHECK
         # ==========================================
 
         if ACCESS_TOKEN == "":
@@ -536,6 +585,8 @@ def home():
                         "EMA EXIT"
                     })
 
+                    # REVERSE ONLY ON SL HIT
+
                     if sl_hit:
 
                         position = "SELL"
@@ -687,6 +738,8 @@ def home():
                         else
                         "EMA EXIT"
                     })
+
+                    # REVERSE ONLY ON SL HIT
 
                     if sl_hit:
 
