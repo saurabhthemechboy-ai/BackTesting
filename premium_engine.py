@@ -179,20 +179,24 @@ def get_option_price(
         # MATCH EXACT CANDLE
         # ==========================================
 
-        match = option_df[
+        # ==========================================
+        # FIND NEAREST CANDLE
+        # ==========================================
+
+        option_df["time_diff"] = (
 
             option_df["date"]
-            == candle_time
+            - candle_time
 
-        ]
+        ).abs()
 
-        if match.empty:
-
-            return None
-
+        match = option_df.sort_values(
+            by="time_diff"
+        ).iloc[0]
+    
         premium_price = float(
 
-            match.iloc[0]["close"]
+            match["close"]
 
         )
 
