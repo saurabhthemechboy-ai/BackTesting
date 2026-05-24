@@ -2,8 +2,6 @@ import os
 from datetime import datetime, timedelta
 
 from flask import Flask
-from flask import request
-from flask import redirect
 from flask import send_file
 
 import pandas as pd
@@ -11,12 +9,6 @@ import pandas as pd
 from kiteconnect import KiteConnect
 
 app = Flask(__name__)
-
-# ==========================================
-# TOKEN FILE
-# ==========================================
-
-TOKEN_FILE = "access_token.txt"
 
 # ==========================================
 # GLOBAL CACHE
@@ -35,6 +27,15 @@ API_KEY = os.getenv(
 
 API_SECRET = os.getenv(
     "KITE_API_SECRET",
+    ""
+).strip()
+
+# ==========================================
+# ACCESS TOKEN FROM RENDER ENV
+# ==========================================
+
+ACCESS_TOKEN = os.getenv(
+    "KITE_ACCESS_TOKEN",
     ""
 ).strip()
 
@@ -160,151 +161,29 @@ def get_option_token(
         return None
 
 # ==========================================
-# HOME PAGE
+# HOME
 # ==========================================
 
 @app.route("/")
-def index():
-
-    return """
-
-    <div style="
-    font-family:sans-serif;
-    padding:40px;
-    ">
-
-    <h1>
-    📊 SENSEX BACKTEST ENGINE
-    </h1>
-
-    <br>
-
-    <a href="/login">
-    🔑 LOGIN TO ZERODHA
-    </a>
-
-    </div>
-
-    """
-
-# ==========================================
-# LOGIN
-# ==========================================
-
-@app.route("/login")
-def login():
-
-    kite = KiteConnect(
-        api_key=API_KEY
-    )
-
-    return redirect(
-        kite.login_url()
-    )
-
-# ==========================================
-# CALLBACK
-# ==========================================
-
-@app.route("/callback")
-def callback():
-
-    try:
-
-        request_token = request.args.get(
-            "request_token"
-        )
-
-        if not request_token:
-
-            return """
-
-            <h2>
-            Request token missing
-            </h2>
-
-            """
-
-        kite = KiteConnect(
-            api_key=API_KEY
-        )
-
-        data = kite.generate_session(
-
-            request_token,
-
-            api_secret=API_SECRET
-        )
-
-        access_token = data[
-            "access_token"
-        ]
-
-        # ==========================================
-        # SAVE TOKEN TO FILE
-        # ==========================================
-
-        with open(
-            TOKEN_FILE,
-            "w"
-        ) as f:
-
-            f.write(
-                access_token
-            )
-
-        # ==========================================
-        # OPEN DASHBOARD
-        # ==========================================
-
-        return redirect(
-            "/dashboard"
-        )
-
-    except Exception as e:
-
-        return f"""
-
-        <h2>
-        CALLBACK ERROR:
-        {str(e)}
-        </h2>
-
-        """
-
-# ==========================================
-# DASHBOARD
-# ==========================================
-
-@app.route("/dashboard")
 def dashboard():
 
     try:
 
         # ==========================================
-        # READ ACCESS TOKEN
+        # CHECK ACCESS TOKEN
         # ==========================================
 
-        try:
-
-            with open(
-                TOKEN_FILE,
-                "r"
-            ) as f:
-
-                access_token = f.read().strip()
-
-        except:
+        if ACCESS_TOKEN == "":
 
             return """
 
             <h2>
-            Login Required
+            KITE_ACCESS_TOKEN Missing
             </h2>
 
-            <a href="/login">
-            LOGIN
-            </a>
+            <p>
+            Add today's access token in Render Environment Variables.
+            </p>
 
             """
 
@@ -317,7 +196,7 @@ def dashboard():
         )
 
         kite.set_access_token(
-            access_token
+            ACCESS_TOKEN
         )
 
         # ==========================================
@@ -565,10 +444,6 @@ def dashboard():
                         curr["close"] / 100
                     ) * 100
 
-                    # ==========================================
-                    # REAL CE TOKEN
-                    # ==========================================
-
                     ce_token = get_option_token(
 
                         kite,
@@ -605,10 +480,6 @@ def dashboard():
                     current_strike = round(
                         curr["close"] / 100
                     ) * 100
-
-                    # ==========================================
-                    # REAL PE TOKEN
-                    # ==========================================
 
                     pe_token = get_option_token(
 
@@ -881,14 +752,6 @@ def dashboard():
 
             """
 
-        trades_df["entry_time"] = pd.to_datetime(
-            trades_df["entry_time"]
-        ).dt.tz_localize(None)
-
-        trades_df["exit_time"] = pd.to_datetime(
-            trades_df["exit_time"]
-        ).dt.tz_localize(None)
-
         total_trades = len(
             trades_df
         )
@@ -978,12 +841,6 @@ def dashboard():
 
         <a href="/download">
         📥 DOWNLOAD EXCEL REPORT
-        </a>
-
-        <br><br>
-
-        <a href="/login">
-        🔑 LOGIN AGAIN
         </a>
 
         </div>
