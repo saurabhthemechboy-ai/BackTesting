@@ -32,7 +32,7 @@ def run_strategy_engine(
 ):
 
     # ==========================================
-    # FETCH SENSEX DATA
+    # FETCH INDEX DATA
     # ==========================================
 
     to_date = datetime.now()
@@ -41,6 +41,10 @@ def run_strategy_engine(
         to_date
         - timedelta(days=backtest_days)
     )
+
+    # ==========================================
+    # USING NIFTY TOKEN FOR STABLE TESTING
+    # ==========================================
 
     data = kite.historical_data(
 
@@ -240,20 +244,26 @@ def run_strategy_engine(
 
                 )
 
-                if option_token is None:
-                    continue
+                premium = None
 
-                premium = get_option_price(
+                if option_token is not None:
 
-                    kite,
-                    option_token,
-                    curr["date"]
+                    premium = get_option_price(
 
-                )
+                        kite,
+                        option_token,
+                        curr["date"]
+
+                    )
+
+                # ==========================================
+                # SAFE DEBUG PREMIUM
+                # ==========================================
 
                 if premium is None:
+
                     premium = 100
-                   
+
                 position = "BUY_CE"
 
                 entry_price = premium
@@ -282,20 +292,26 @@ def run_strategy_engine(
 
                 )
 
-                if option_token is None:
-                    continue
+                premium = None
 
-                premium = get_option_price(
+                if option_token is not None:
 
-                    kite,
-                    option_token,
-                    curr["date"]
+                    premium = get_option_price(
 
-                )
+                        kite,
+                        option_token,
+                        curr["date"]
+
+                    )
+
+                # ==========================================
+                # SAFE DEBUG PREMIUM
+                # ==========================================
 
                 if premium is None:
+
                     premium = 100
-                   
+
                 position = "BUY_PE"
 
                 entry_price = premium
@@ -316,13 +332,21 @@ def run_strategy_engine(
 
         elif position is not None:
 
-            current_premium = get_option_price(
+            current_premium = None
 
-                kite,
-                entry_option,
-                curr["date"]
+            if entry_option is not None:
 
-            )
+                current_premium = get_option_price(
+
+                    kite,
+                    entry_option,
+                    curr["date"]
+
+                )
+
+            # ==========================================
+            # SAFE DEBUG PREMIUM
+            # ==========================================
 
             if current_premium is None:
 
@@ -372,7 +396,7 @@ def run_strategy_engine(
                 trailing_hit = False
 
             # ==========================================
-            # FIXED SL
+            # FIXED 15% SL
             # ==========================================
 
             sl_price = (
@@ -506,6 +530,8 @@ def run_strategy_engine(
 
                     )
 
+                    reverse_price = None
+
                     if reverse_token is not None:
 
                         reverse_price = get_option_price(
@@ -516,33 +542,31 @@ def run_strategy_engine(
 
                         )
 
-                        if reverse_price is not None:
+                    # ==========================================
+                    # SAFE DEBUG PREMIUM
+                    # ==========================================
 
-                            position = (
+                    if reverse_price is None:
 
-                                "BUY_PE"
-                                if reverse_type == "PE"
-                                else "BUY_CE"
+                        reverse_price = 100
 
-                            )
+                    position = (
 
-                            entry_price = reverse_price
+                        "BUY_PE"
+                        if reverse_type == "PE"
+                        else "BUY_CE"
 
-                            entry_time = curr[
-                                "date"
-                            ]
+                    )
 
-                            entry_option = reverse_token
+                    entry_price = reverse_price
 
-                            highest_price = reverse_price
+                    entry_time = curr[
+                        "date"
+                    ]
 
-                        else:
+                    entry_option = reverse_token
 
-                            position = None
-
-                    else:
-
-                        position = None
+                    highest_price = reverse_price
 
                 else:
 
