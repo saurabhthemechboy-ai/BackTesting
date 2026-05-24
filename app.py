@@ -13,6 +13,12 @@ from kiteconnect import KiteConnect
 app = Flask(__name__)
 
 # ==========================================
+# TOKEN FILE
+# ==========================================
+
+TOKEN_FILE = "access_token.txt"
+
+# ==========================================
 # GLOBAL CACHE
 # ==========================================
 
@@ -120,7 +126,7 @@ def get_option_token(
         ]
 
         # ==========================================
-        # SORT NEAREST EXPIRY
+        # NEAREST EXPIRY
         # ==========================================
 
         df = df.sort_values(
@@ -235,15 +241,20 @@ def callback():
         ]
 
         # ==========================================
-        # SAVE TOKEN
+        # SAVE TOKEN TO FILE
         # ==========================================
 
-        app.config[
-            "ACCESS_TOKEN"
-        ] = access_token
+        with open(
+            TOKEN_FILE,
+            "w"
+        ) as f:
+
+            f.write(
+                access_token
+            )
 
         # ==========================================
-        # AUTO REDIRECT
+        # OPEN DASHBOARD
         # ==========================================
 
         return redirect(
@@ -271,23 +282,28 @@ def dashboard():
     try:
 
         # ==========================================
-        # ACCESS TOKEN
+        # READ ACCESS TOKEN
         # ==========================================
 
-        access_token = app.config.get(
-            "ACCESS_TOKEN"
-        )
+        try:
 
-        if not access_token:
+            with open(
+                TOKEN_FILE,
+                "r"
+            ) as f:
+
+                access_token = f.read().strip()
+
+        except:
 
             return """
 
             <h2>
-            Session expired
+            Login Required
             </h2>
 
             <a href="/login">
-            LOGIN AGAIN
+            LOGIN
             </a>
 
             """
