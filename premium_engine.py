@@ -68,7 +68,7 @@ def get_option_token(
         ]
 
         # ==========================================
-        # OPTION TYPE
+        # CE / PE
         # ==========================================
 
         df = df[
@@ -147,21 +147,33 @@ def get_option_price(
 
     try:
 
-        from_dt = candle_time - timedelta(
-            minutes=5
+        # ==========================================
+        # FULL DAY FETCH
+        # ==========================================
+
+        start_day = candle_time.replace(
+
+            hour=9,
+            minute=15,
+            second=0
+
         )
 
-        to_dt = candle_time + timedelta(
-            minutes=5
+        end_day = candle_time.replace(
+
+            hour=15,
+            minute=30,
+            second=0
+
         )
 
         candles = kite.historical_data(
 
             instrument_token=option_token,
 
-            from_date=from_dt,
+            from_date=start_day,
 
-            to_date=to_dt,
+            to_date=end_day,
 
             interval="5minute"
 
@@ -184,6 +196,18 @@ def get_option_price(
         )
 
         # ==========================================
+        # REMOVE TIMEZONE
+        # ==========================================
+
+        option_df["date"] = option_df[
+            "date"
+        ].dt.tz_localize(None)
+
+        candle_time = pd.to_datetime(
+            candle_time
+        ).tz_localize(None)
+
+        # ==========================================
         # FIND NEAREST CANDLE
         # ==========================================
 
@@ -194,14 +218,14 @@ def get_option_price(
 
         ).abs()
 
-        match = option_df.sort_values(
+        nearest = option_df.sort_values(
+
             by="time_diff"
+
         ).iloc[0]
 
         premium_price = float(
-
-            match["close"]
-
+            nearest["close"]
         )
 
         print(
