@@ -50,7 +50,7 @@ STOPLOSS_PERCENT = 0.15
 
 BACKTEST_DAYS = 2
 
-INTERVAL = "5minute"
+INTERVAL = "15minute"
 
 # ==========================================
 # IMPORT MODULES
