@@ -54,7 +54,7 @@ def get_option_token(
         )
 
         # ==========================================
-        # BANKNIFTY OPTIONS
+        # FILTER BANKNIFTY OPTIONS
         # ==========================================
 
         df = instruments_df[
@@ -66,7 +66,7 @@ def get_option_token(
         ]
 
         # ==========================================
-        # CE / PE
+        # OPTION TYPE
         # ==========================================
 
         df = df[
@@ -146,32 +146,48 @@ def get_option_price(
     try:
 
         # ==========================================
-        # FETCH FULL DAY OPTION DATA
+        # REMOVE TIMEZONE
         # ==========================================
 
-        start_day = candle_time.replace(
+        candle_time = pd.to_datetime(
+            candle_time
+        ).tz_localize(None)
 
+        # ==========================================
+        # BUILD CLEAN MARKET TIMES
+        # ==========================================
+
+        start_day = pd.Timestamp(
+
+            year=candle_time.year,
+            month=candle_time.month,
+            day=candle_time.day,
             hour=9,
-            minute=15,
-            second=0
+            minute=15
 
         )
 
-        end_day = candle_time.replace(
+        end_day = pd.Timestamp(
 
+            year=candle_time.year,
+            month=candle_time.month,
+            day=candle_time.day,
             hour=15,
-            minute=30,
-            second=0
+            minute=30
 
+        )
+
+        print(
+            "FETCHING OPTION DATA"
         )
 
         candles = kite.historical_data(
 
             instrument_token=option_token,
 
-            from_date=start_day,
+            from_date=start_day.to_pydatetime(),
 
-            to_date=end_day,
+            to_date=end_day.to_pydatetime(),
 
             interval="5minute"
 
@@ -191,19 +207,7 @@ def get_option_price(
 
         option_df["date"] = pd.to_datetime(
             option_df["date"]
-        )
-
-        # ==========================================
-        # REMOVE TIMEZONE
-        # ==========================================
-
-        option_df["date"] = option_df[
-            "date"
-        ].dt.tz_localize(None)
-
-        candle_time = pd.to_datetime(
-            candle_time
-        ).tz_localize(None)
+        ).dt.tz_localize(None)
 
         # ==========================================
         # FIND NEAREST CANDLE
