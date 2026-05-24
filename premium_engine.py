@@ -1,13 +1,15 @@
 import pandas as pd
 
 # ==========================================
-# GLOBAL CACHE
+# GLOBAL CACHES
 # ==========================================
 
 OPTION_CACHE = None
 
+PRICE_CACHE = {}
+
 # ==========================================
-# LOAD NFO INSTRUMENTS
+# LOAD INSTRUMENTS
 # ==========================================
 
 def load_instruments(kite):
@@ -20,12 +22,10 @@ def load_instruments(kite):
             "LOADING NFO INSTRUMENTS..."
         )
 
-        instruments = kite.instruments(
-            "NFO"
-        )
-
         OPTION_CACHE = pd.DataFrame(
-            instruments
+
+            kite.instruments("NFO")
+
         )
 
         print(
@@ -53,10 +53,6 @@ def get_option_token(
             kite
         )
 
-        # ==========================================
-        # FILTER BANKNIFTY OPTIONS
-        # ==========================================
-
         df = instruments_df[
 
             instruments_df[
@@ -65,10 +61,6 @@ def get_option_token(
 
         ]
 
-        # ==========================================
-        # OPTION TYPE
-        # ==========================================
-
         df = df[
 
             df[
@@ -76,10 +68,6 @@ def get_option_token(
             ] == option_type
 
         ]
-
-        # ==========================================
-        # STRIKE MATCH
-        # ==========================================
 
         df = df[
 
@@ -92,10 +80,6 @@ def get_option_token(
             float(strike)
 
         ]
-
-        # ==========================================
-        # NEAREST EXPIRY
-        # ==========================================
 
         df = df.sort_values(
             by="expiry"
@@ -125,17 +109,17 @@ def get_option_token(
     except Exception as e:
 
         print(
-            "OPTION TOKEN ERROR:",
+            "TOKEN ERROR:",
             str(e)
         )
 
         return None
 
 # ==========================================
-# GET OPTION PREMIUM
+# LOAD OPTION DAY DATA
 # ==========================================
 
-def get_option_price(
+def load_option_day_data(
 
     kite,
     option_token,
@@ -143,19 +127,21 @@ def get_option_price(
 
 ):
 
-    try:
+    global PRICE_CACHE
 
-        # ==========================================
-        # REMOVE TIMEZONE
-        # ==========================================
+    cache_key = f"{option_token}_{candle_time.date()}"
+
+    if cache_key in PRICE_CACHE:
+
+        return PRICE_CACHE[
+            cache_key
+        ]
+
+    try:
 
         candle_time = pd.to_datetime(
             candle_time
         ).tz_localize(None)
-
-        # ==========================================
-        # BUILD CLEAN MARKET TIMES
-        # ==========================================
 
         start_day = pd.Timestamp(
 
@@ -178,7 +164,7 @@ def get_option_price(
         )
 
         print(
-            "FETCHING OPTION DATA"
+            "DOWNLOADING OPTION DATA..."
         )
 
         candles = kite.historical_data(
@@ -195,10 +181,6 @@ def get_option_price(
 
         if not candles:
 
-            print(
-                "NO OPTION CANDLES"
-            )
-
             return None
 
         option_df = pd.DataFrame(
@@ -209,9 +191,50 @@ def get_option_price(
             option_df["date"]
         ).dt.tz_localize(None)
 
-        # ==========================================
-        # FIND NEAREST CANDLE
-        # ==========================================
+        PRICE_CACHE[
+            cache_key
+        ] = option_df
+
+        return option_df
+
+    except Exception as e:
+
+        print(
+            "CACHE LOAD ERROR:",
+            str(e)
+        )
+
+        return None
+
+# ==========================================
+# GET OPTION PREMIUM
+# ==========================================
+
+def get_option_price(
+
+    kite,
+    option_token,
+    candle_time
+
+):
+
+    try:
+
+        option_df = load_option_day_data(
+
+            kite,
+            option_token,
+            candle_time
+
+        )
+
+        if option_df is None:
+
+            return None
+
+        candle_time = pd.to_datetime(
+            candle_time
+        ).tz_localize(None)
 
         option_df["time_diff"] = (
 
@@ -230,17 +253,12 @@ def get_option_price(
             nearest["close"]
         )
 
-        print(
-            "PREMIUM PRICE:",
-            premium_price
-        )
-
         return premium_price
 
     except Exception as e:
 
         print(
-            "OPTION PRICE ERROR:",
+            "PRICE ERROR:",
             str(e)
         )
 
