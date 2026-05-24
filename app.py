@@ -96,9 +96,33 @@ def callback():
 
     try:
 
+        # ==========================================
+        # CLEAR OLD SESSION
+        # ==========================================
+
+        session.clear()
+
+        # ==========================================
+        # GET REQUEST TOKEN
+        # ==========================================
+
         request_token = request.args.get(
             "request_token"
         )
+
+        if not request_token:
+
+            return """
+
+            <h2>
+            Request token missing
+            </h2>
+
+            """
+
+        # ==========================================
+        # CREATE KITE SESSION
+        # ==========================================
 
         kite = KiteConnect(
             api_key=API_KEY
@@ -115,6 +139,45 @@ def callback():
             "access_token"
         ]
 
+        # ==========================================
+        # SAVE ACCESS TOKEN
+        # ==========================================
+
+        session[
+            "access_token"
+        ] = access_token
+
+        # ==========================================
+        # VERIFY TOKEN IMMEDIATELY
+        # ==========================================
+
+        kite.set_access_token(
+            access_token
+        )
+
+        profile = kite.profile()
+
+        print(
+            "LOGIN SUCCESS:",
+            profile.get(
+                "user_name"
+            )
+        )
+
+        return redirect("/")
+
+    except Exception as e:
+
+        session.clear()
+
+        return f"""
+
+        <h2>
+        CALLBACK ERROR:
+        {str(e)}
+        </h2>
+
+        """
         # ==========================================
         # SAVE TOKEN IN SESSION
         # ==========================================
