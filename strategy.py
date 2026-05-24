@@ -138,12 +138,10 @@ def run_strategy_engine(
 
     entry_strike = None
 
-    highest_price = 0
-
     trades = []
 
     # ==========================================
-    # LOOP
+    # MAIN LOOP
     # ==========================================
 
     for i in range(1, len(df)):
@@ -168,18 +166,8 @@ def run_strategy_engine(
 
         )
 
-        force_exit = (
-
-            current_time
-            >= datetime.strptime(
-                squareoff_time,
-                "%H:%M"
-            ).time()
-
-        )
-
         # ==========================================
-        # SIMPLE EMA TREND
+        # SIMPLE SIGNALS
         # ==========================================
 
         buy_signal = (
@@ -209,10 +197,6 @@ def run_strategy_engine(
             allow_entry
 
         ):
-
-            # ==========================================
-            # SENSEX STRIKE
-            # ==========================================
 
             strike = int(
 
@@ -248,15 +232,13 @@ def run_strategy_engine(
 
                     )
 
-                # ==========================================
-                # FALLBACK PREMIUM
-                # ==========================================
-
                 if premium is None:
 
-                    premium = curr[
-                        "close"
-                    ] * 0.01
+                    premium = (
+
+                        curr["close"] * 0.01
+
+                    )
 
                 position = "BUY_CE"
 
@@ -269,8 +251,6 @@ def run_strategy_engine(
                 entry_option = option_token
 
                 entry_strike = strike
-
-                highest_price = premium
 
             # ==========================================
             # BUY PE
@@ -298,15 +278,13 @@ def run_strategy_engine(
 
                     )
 
-                # ==========================================
-                # FALLBACK PREMIUM
-                # ==========================================
-
                 if premium is None:
 
-                    premium = curr[
-                        "close"
-                    ] * 0.01
+                    premium = (
+
+                        curr["close"] * 0.01
+
+                    )
 
                 position = "BUY_PE"
 
@@ -320,10 +298,8 @@ def run_strategy_engine(
 
                 entry_strike = strike
 
-                highest_price = premium
-
         # ==========================================
-        # ACTIVE POSITION
+        # FORCE EXIT NEXT CANDLE
         # ==========================================
 
         elif position is not None:
@@ -340,10 +316,6 @@ def run_strategy_engine(
 
                 )
 
-            # ==========================================
-            # FALLBACK CURRENT PREMIUM
-            # ==========================================
-
             if current_premium is None:
 
                 current_premium = (
@@ -353,228 +325,72 @@ def run_strategy_engine(
                 )
 
             # ==========================================
-            # TRACK HIGH
+            # QUICK EXIT
             # ==========================================
 
-            highest_price = max(
+            exit_price = current_premium
 
-                highest_price,
+            pnl_points = (
 
-                current_premium
+                exit_price
+                - entry_price
 
             )
 
-            # ==========================================
-            # TRAILING LOGIC
-            # ==========================================
+            profit_amount = round(
 
-            trail_active = (
+                pnl_points
+                * lot_size,
 
-                highest_price
-                >= entry_price + trail_activation
+                2
 
             )
 
-            if trail_active:
+            trades.append({
 
-                trailing_sl = (
+                "trade_type":
+                position,
 
-                    highest_price
-                    - trail_points
+                "strike":
+                entry_strike,
 
-                )
+                "entry_time":
+                entry_time,
 
-                trailing_hit = (
+                "exit_time":
+                curr["date"],
 
-                    current_premium
-                    <= trailing_sl
-
-                )
-
-            else:
-
-                trailing_hit = False
-
-            # ==========================================
-            # FIXED 15% SL
-            # ==========================================
-
-            sl_price = (
-
-                entry_price
-                * (1 - stoploss_percent)
-
-            )
-
-            hard_sl_hit = (
-
-                current_premium
-                <= sl_price
-
-            )
-
-            # ==========================================
-            # EXIT
-            # ==========================================
-
-            if (
-
-                force_exit
-
-                or
-
-                trailing_hit
-
-                or
-
-                hard_sl_hit
-
-            ):
-
-                exit_price = current_premium
-
-                pnl_points = (
-
-                    exit_price
-                    - entry_price
-
-                )
-
-                profit_amount = round(
-
-                    pnl_points
-                    * lot_size,
-
+                "entry_premium":
+                round(
+                    entry_price,
                     2
+                ),
 
-                )
+                "exit_premium":
+                round(
+                    exit_price,
+                    2
+                ),
 
-                trades.append({
+                "points":
+                round(
+                    pnl_points,
+                    2
+                ),
 
-                    "trade_type":
-                    position,
+                "profit_amount":
+                profit_amount,
 
-                    "strike":
-                    entry_strike,
+                "exit_reason":
+                "TEST EXIT"
 
-                    "entry_time":
-                    entry_time,
+            })
 
-                    "exit_time":
-                    curr["date"],
+            # ==========================================
+            # RESET POSITION
+            # ==========================================
 
-                    "entry_premium":
-                    round(
-                        entry_price,
-                        2
-                    ),
-
-                    "exit_premium":
-                    round(
-                        exit_price,
-                        2
-                    ),
-
-                    "points":
-                    round(
-                        pnl_points,
-                        2
-                    ),
-
-                    "profit_amount":
-                    profit_amount,
-
-                    "exit_reason":
-
-                    "DAY END"
-                    if force_exit
-
-                    else
-
-                    "TRAIL SL"
-                    if trailing_hit
-
-                    else
-
-                    "15% SL"
-
-                })
-
-                # ==========================================
-                # REVERSE ENTRY
-                # ==========================================
-
-                if (
-
-                    hard_sl_hit
-
-                    and
-
-                    allow_entry
-
-                ):
-
-                    reverse_type = (
-
-                        "PE"
-                        if position == "BUY_CE"
-                        else "CE"
-
-                    )
-
-                    reverse_token = get_option_token(
-
-                        kite,
-                        entry_strike,
-                        reverse_type
-
-                    )
-
-                    reverse_price = None
-
-                    if reverse_token is not None:
-
-                        reverse_price = get_option_price(
-
-                            kite,
-                            reverse_token,
-                            curr["date"]
-
-                        )
-
-                    # ==========================================
-                    # FALLBACK REVERSE PREMIUM
-                    # ==========================================
-
-                    if reverse_price is None:
-
-                        reverse_price = (
-
-                            curr["close"] * 0.01
-
-                        )
-
-                    position = (
-
-                        "BUY_PE"
-                        if reverse_type == "PE"
-                        else "BUY_CE"
-
-                    )
-
-                    entry_price = reverse_price
-
-                    entry_time = curr[
-                        "date"
-                    ]
-
-                    entry_option = reverse_token
-
-                    highest_price = reverse_price
-
-                else:
-
-                    position = None
+            position = None
 
     # ==========================================
     # FINAL DATAFRAME
