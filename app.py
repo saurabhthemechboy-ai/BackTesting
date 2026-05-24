@@ -1,32 +1,16 @@
 import os
 from datetime import datetime, timedelta
-from flask_session import Session
 
 from flask import Flask
 from flask import request
 from flask import redirect
 from flask import send_file
-from flask import session
 
 import pandas as pd
 
 from kiteconnect import KiteConnect
 
 app = Flask(__name__)
-
-app.secret_key = "sensex_secret_key"
-
-app.config["SESSION_PERMANENT"] = False
-
-app.config["SESSION_TYPE"] = "filesystem"
-
-Session(app)
-
-# ==========================================
-# SECRET KEY
-# ==========================================
-
-app.secret_key = "sensex_secret_key"
 
 # ==========================================
 # GLOBAL CACHE
@@ -70,6 +54,11 @@ def load_instruments(kite):
             instruments
         )
 
+        print(
+            "INSTRUMENTS LOADED:",
+            len(OPTION_CACHE)
+        )
+
     return OPTION_CACHE
 
 # ==========================================
@@ -96,16 +85,6 @@ def callback():
 
     try:
 
-        # ==========================================
-        # CLEAR OLD SESSION
-        # ==========================================
-
-        session.clear()
-
-        # ==========================================
-        # GET REQUEST TOKEN
-        # ==========================================
-
         request_token = request.args.get(
             "request_token"
         )
@@ -119,10 +98,6 @@ def callback():
             </h2>
 
             """
-
-        # ==========================================
-        # CREATE KITE SESSION
-        # ==========================================
 
         kite = KiteConnect(
             api_key=API_KEY
@@ -140,60 +115,26 @@ def callback():
         ]
 
         # ==========================================
-        # SAVE ACCESS TOKEN
+        # SAVE TOKEN
         # ==========================================
 
-        session[
-            "access_token"
-        ] = access_token
+        with open(
+            "/tmp/access_token.txt",
+            "w"
+        ) as f:
 
-        # ==========================================
-        # VERIFY TOKEN IMMEDIATELY
-        # ==========================================
-
-        kite.set_access_token(
-            access_token
-        )
-
-        profile = kite.profile()
-
-        print(
-            "LOGIN SUCCESS:",
-            profile.get(
-                "user_name"
+            f.write(
+                access_token
             )
-        )
 
         return redirect("/")
 
     except Exception as e:
-
-        session.clear()
 
         return f"""
 
         <h2>
         CALLBACK ERROR:
-        {str(e)}
-        </h2>
-
-        """
-        # ==========================================
-        # SAVE TOKEN IN SESSION
-        # ==========================================
-
-        session[
-            "access_token"
-        ] = access_token
-
-        return redirect("/")
-
-    except Exception as e:
-
-        return f"""
-
-        <h2>
-        ERROR :
         {str(e)}
         </h2>
 
@@ -209,18 +150,21 @@ def home():
     try:
 
         # ==========================================
-        # ACCESS TOKEN
+        # READ TOKEN
         # ==========================================
 
-        access_token = session.get(
-            "access_token"
-        )
+        try:
 
-        if not access_token:
+            with open(
+                "/tmp/access_token.txt",
+                "r"
+            ) as f:
 
-            return redirect(
-                "/login"
-            )
+                access_token = f.read().strip()
+
+        except:
+
+            return redirect("/login")
 
         # ==========================================
         # CONNECT KITE
@@ -234,6 +178,10 @@ def home():
             access_token
         )
 
+        # ==========================================
+        # VERIFY LOGIN
+        # ==========================================
+
         profile = kite.profile()
 
         user_name = profile.get(
@@ -242,7 +190,7 @@ def home():
         )
 
         # ==========================================
-        # FETCH DATA
+        # FETCH SENSEX DATA
         # ==========================================
 
         to_date = datetime.now()
@@ -265,7 +213,13 @@ def home():
 
         if not data:
 
-            return "No Historical Data"
+            return """
+
+            <h2>
+            No Historical Data
+            </h2>
+
+            """
 
         # ==========================================
         # DATAFRAME
@@ -362,11 +316,16 @@ def home():
         for i in range(1, len(df)):
 
             prev = df.iloc[i - 1]
+
             curr = df.iloc[i]
 
             current_time = curr[
                 "date"
             ].time()
+
+            # ==========================================
+            # ENTRY CUTOFF
+            # ==========================================
 
             entry_cutoff = datetime.strptime(
                 "15:00",
@@ -374,9 +333,14 @@ def home():
             ).time()
 
             allow_new_trade = (
+
                 current_time
                 < entry_cutoff
             )
+
+            # ==========================================
+            # FORCE EXIT
+            # ==========================================
 
             squareoff_time = datetime.strptime(
                 "15:25",
@@ -384,9 +348,14 @@ def home():
             ).time()
 
             force_squareoff = (
+
                 current_time
                 >= squareoff_time
             )
+
+            # ==========================================
+            # BUY SIGNAL
+            # ==========================================
 
             buy_signal = (
 
@@ -399,6 +368,10 @@ def home():
                 <= prev["EMA21"]
 
             )
+
+            # ==========================================
+            # SELL SIGNAL
+            # ==========================================
 
             sell_signal = (
 
@@ -467,7 +440,7 @@ def home():
                     ) * 100
 
             # ==========================================
-            # BUY EXIT
+            # BUY POSITION
             # ==========================================
 
             elif position == "BUY":
@@ -483,16 +456,20 @@ def home():
                 )
 
                 trailing_sl_hit = (
+
                     curr["close"]
                     < trailing_stop
                 )
 
                 hard_sl_price = (
+
                     entry_price
                     * (1 - hard_sl_percent)
+
                 )
 
                 hard_sl_hit = (
+
                     curr["close"]
                     < hard_sl_price
                 )
@@ -502,9 +479,18 @@ def home():
                 if (
 
                     force_squareoff
-                    or trailing_sl_hit
-                    or hard_sl_hit
-                    or crossover_exit
+
+                    or
+
+                    trailing_sl_hit
+
+                    or
+
+                    hard_sl_hit
+
+                    or
+
+                    crossover_exit
 
                 ):
 
@@ -537,10 +523,16 @@ def home():
                         curr["date"],
 
                         "entry_spot":
-                        round(entry_price, 2),
+                        round(
+                            entry_price,
+                            2
+                        ),
 
                         "exit_spot":
-                        round(exit_price, 2),
+                        round(
+                            exit_price,
+                            2
+                        ),
 
                         "profit_amount":
                         profit_amount,
@@ -568,7 +560,7 @@ def home():
                     position = None
 
             # ==========================================
-            # SELL EXIT
+            # SELL POSITION
             # ==========================================
 
             elif position == "SELL":
@@ -584,16 +576,20 @@ def home():
                 )
 
                 trailing_sl_hit = (
+
                     curr["close"]
                     > trailing_stop
                 )
 
                 hard_sl_price = (
+
                     entry_price
                     * (1 + hard_sl_percent)
+
                 )
 
                 hard_sl_hit = (
+
                     curr["close"]
                     > hard_sl_price
                 )
@@ -603,9 +599,18 @@ def home():
                 if (
 
                     force_squareoff
-                    or trailing_sl_hit
-                    or hard_sl_hit
-                    or crossover_exit
+
+                    or
+
+                    trailing_sl_hit
+
+                    or
+
+                    hard_sl_hit
+
+                    or
+
+                    crossover_exit
 
                 ):
 
@@ -638,10 +643,16 @@ def home():
                         curr["date"],
 
                         "entry_spot":
-                        round(entry_price, 2),
+                        round(
+                            entry_price,
+                            2
+                        ),
 
                         "exit_spot":
-                        round(exit_price, 2),
+                        round(
+                            exit_price,
+                            2
+                        ),
 
                         "profit_amount":
                         profit_amount,
@@ -699,11 +710,13 @@ def home():
         )
 
         wins = len(
+
             trades_df[
                 trades_df[
                     "profit_amount"
                 ] > 0
             ]
+
         )
 
         losses = (
@@ -719,8 +732,12 @@ def home():
             wins / total_trades
         ) * 100
 
+        # ==========================================
+        # EXPORT EXCEL
+        # ==========================================
+
         excel_file = (
-            "backtest_results.xlsx"
+            "/tmp/backtest_results.xlsx"
         )
 
         trades_df.to_excel(
@@ -782,7 +799,7 @@ def home():
         <br><br>
 
         <a href="/login">
-        🔑 REFRESH LOGIN
+        🔑 LOGIN AGAIN
         </a>
 
         </div>
@@ -808,7 +825,7 @@ def home():
 def download_file():
 
     return send_file(
-        "backtest_results.xlsx",
+        "/tmp/backtest_results.xlsx",
         as_attachment=True
     )
 
