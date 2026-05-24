@@ -77,10 +77,6 @@ def get_option_token(
             kite
         )
 
-        # ==========================================
-        # FILTER SENSEX
-        # ==========================================
-
         df = instruments_df[
 
             instruments_df[
@@ -89,10 +85,6 @@ def get_option_token(
 
         ]
 
-        # ==========================================
-        # FILTER OPTION TYPE
-        # ==========================================
-
         df = df[
 
             df[
@@ -100,10 +92,6 @@ def get_option_token(
             ] == option_type
 
         ]
-
-        # ==========================================
-        # FILTER STRIKE
-        # ==========================================
 
         df = df[
 
@@ -116,10 +104,6 @@ def get_option_token(
             float(strike)
 
         ]
-
-        # ==========================================
-        # NEAREST EXPIRY
-        # ==========================================
 
         df = df.sort_values(
             by="expiry"
@@ -161,7 +145,7 @@ def dashboard():
     try:
 
         # ==========================================
-        # CHECK ACCESS TOKEN
+        # CHECK TOKEN
         # ==========================================
 
         if ACCESS_TOKEN == "":
@@ -312,6 +296,8 @@ def dashboard():
         trades = []
 
         trail_points = 30
+
+        trail_activation = 30
 
         hard_sl_percent = 0.20
 
@@ -492,16 +478,37 @@ def dashboard():
                     curr["close"]
                 )
 
-                trailing_stop = (
+                # ==========================================
+                # ACTIVATE TRAIL ONLY AFTER PROFIT
+                # ==========================================
+
+                trail_active = (
+
                     highest_price
-                    - trail_points
+                    >= entry_price + trail_activation
+
                 )
 
-                trailing_sl_hit = (
+                if trail_active:
 
-                    curr["close"]
-                    < trailing_stop
-                )
+                    trailing_stop = (
+                        highest_price
+                        - trail_points
+                    )
+
+                    trailing_sl_hit = (
+
+                        curr["close"]
+                        < trailing_stop
+                    )
+
+                else:
+
+                    trailing_sl_hit = False
+
+                # ==========================================
+                # HARD SL
+                # ==========================================
 
                 hard_sl_price = (
 
@@ -516,7 +523,15 @@ def dashboard():
                     < hard_sl_price
                 )
 
+                # ==========================================
+                # EMA EXIT
+                # ==========================================
+
                 crossover_exit = sell_signal
+
+                # ==========================================
+                # EXIT
+                # ==========================================
 
                 if (
 
@@ -612,16 +627,37 @@ def dashboard():
                     curr["close"]
                 )
 
-                trailing_stop = (
+                # ==========================================
+                # ACTIVATE TRAIL ONLY AFTER PROFIT
+                # ==========================================
+
+                trail_active = (
+
                     highest_price
-                    + trail_points
+                    <= entry_price - trail_activation
+
                 )
 
-                trailing_sl_hit = (
+                if trail_active:
 
-                    curr["close"]
-                    > trailing_stop
-                )
+                    trailing_stop = (
+                        highest_price
+                        + trail_points
+                    )
+
+                    trailing_sl_hit = (
+
+                        curr["close"]
+                        > trailing_stop
+                    )
+
+                else:
+
+                    trailing_sl_hit = False
+
+                # ==========================================
+                # HARD SL
+                # ==========================================
 
                 hard_sl_price = (
 
@@ -636,7 +672,15 @@ def dashboard():
                     > hard_sl_price
                 )
 
+                # ==========================================
+                # EMA EXIT
+                # ==========================================
+
                 crossover_exit = buy_signal
+
+                # ==========================================
+                # EXIT
+                # ==========================================
 
                 if (
 
@@ -794,6 +838,10 @@ def dashboard():
             excel_file,
             index=False
         )
+
+        # ==========================================
+        # HTML REPORT
+        # ==========================================
 
         return f"""
 
