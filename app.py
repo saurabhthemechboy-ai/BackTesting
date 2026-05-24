@@ -25,15 +25,6 @@ API_KEY = os.getenv(
     ""
 ).strip()
 
-API_SECRET = os.getenv(
-    "KITE_API_SECRET",
-    ""
-).strip()
-
-# ==========================================
-# ACCESS TOKEN FROM RENDER ENV
-# ==========================================
-
 ACCESS_TOKEN = os.getenv(
     "KITE_ACCESS_TOKEN",
     ""
@@ -69,7 +60,7 @@ def load_instruments(kite):
     return OPTION_CACHE
 
 # ==========================================
-# GET ATM OPTION TOKEN
+# GET OPTION TOKEN
 # ==========================================
 
 def get_option_token(
@@ -99,7 +90,7 @@ def get_option_token(
         ]
 
         # ==========================================
-        # CE / PE
+        # FILTER OPTION TYPE
         # ==========================================
 
         df = df[
@@ -111,7 +102,7 @@ def get_option_token(
         ]
 
         # ==========================================
-        # STRIKE
+        # FILTER STRIKE
         # ==========================================
 
         df = df[
@@ -180,10 +171,6 @@ def dashboard():
             <h2>
             KITE_ACCESS_TOKEN Missing
             </h2>
-
-            <p>
-            Add today's access token in Render Environment Variables.
-            </p>
 
             """
 
@@ -751,6 +738,22 @@ def dashboard():
             </h2>
 
             """
+
+        # ==========================================
+        # REMOVE TIMEZONE
+        # ==========================================
+
+        trades_df["entry_time"] = pd.to_datetime(
+            trades_df["entry_time"]
+        ).dt.tz_localize(None)
+
+        trades_df["exit_time"] = pd.to_datetime(
+            trades_df["exit_time"]
+        ).dt.tz_localize(None)
+
+        # ==========================================
+        # STATS
+        # ==========================================
 
         total_trades = len(
             trades_df
