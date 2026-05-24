@@ -56,14 +56,14 @@ def get_option_token(
         )
 
         # ==========================================
-        # FILTER SENSEX
+        # FILTER NIFTY OPTIONS
         # ==========================================
 
         df = instruments_df[
 
             instruments_df[
                 "name"
-            ] == "SENSEX"
+            ] == "NIFTY"
 
         ]
 
@@ -80,7 +80,7 @@ def get_option_token(
         ]
 
         # ==========================================
-        # STRIKE
+        # STRIKE MATCH
         # ==========================================
 
         df = df[
@@ -104,6 +104,10 @@ def get_option_token(
         )
 
         if df.empty:
+
+            print(
+                "NO OPTION FOUND"
+            )
 
             return None
 
@@ -165,6 +169,10 @@ def get_option_price(
 
         if not candles:
 
+            print(
+                "NO OPTION CANDLES"
+            )
+
             return None
 
         option_df = pd.DataFrame(
@@ -174,10 +182,6 @@ def get_option_price(
         option_df["date"] = pd.to_datetime(
             option_df["date"]
         )
-
-        # ==========================================
-        # MATCH EXACT CANDLE
-        # ==========================================
 
         # ==========================================
         # FIND NEAREST CANDLE
@@ -193,11 +197,16 @@ def get_option_price(
         match = option_df.sort_values(
             by="time_diff"
         ).iloc[0]
-    
+
         premium_price = float(
 
             match["close"]
 
+        )
+
+        print(
+            "PREMIUM PRICE:",
+            premium_price
         )
 
         return premium_price
