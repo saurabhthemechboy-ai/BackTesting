@@ -5,6 +5,7 @@ from flask import Flask
 from flask import request
 from flask import redirect
 from flask import send_file
+from flask import session
 
 import pandas as pd
 
@@ -13,11 +14,16 @@ from kiteconnect import KiteConnect
 app = Flask(__name__)
 
 # ==========================================
-# GLOBAL VARIABLES
+# SECRET KEY
+# ==========================================
+
+app.secret_key = "sensex_secret_key"
+
+# ==========================================
+# GLOBAL CACHE
 # ==========================================
 
 OPTION_CACHE = None
-ACCESS_TOKEN = ""
 
 # ==========================================
 # API CONFIG
@@ -32,26 +38,6 @@ API_SECRET = os.getenv(
     "KITE_API_SECRET",
     ""
 ).strip()
-
-# ==========================================
-# GET ACCESS TOKEN
-# ==========================================
-
-def get_access_token():
-
-    global ACCESS_TOKEN
-
-    return ACCESS_TOKEN
-
-# ==========================================
-# SAVE ACCESS TOKEN
-# ==========================================
-
-def save_access_token(token):
-
-    global ACCESS_TOKEN
-
-    ACCESS_TOKEN = token
 
 # ==========================================
 # LOAD INSTRUMENTS ONLY ONCE
@@ -75,92 +61,7 @@ def load_instruments(kite):
             instruments
         )
 
-        print(
-            "TOTAL INSTRUMENTS:",
-            len(OPTION_CACHE)
-        )
-
     return OPTION_CACHE
-
-# ==========================================
-# GET OPTION TOKEN
-# ==========================================
-
-def get_option_token(
-
-    kite,
-    strike,
-    option_type
-
-):
-
-    try:
-
-        instruments_df = load_instruments(
-            kite
-        )
-
-        df = instruments_df[
-
-            instruments_df[
-                "name"
-            ] == "SENSEX"
-
-        ]
-
-        df = df[
-
-            df[
-                "instrument_type"
-            ] == option_type
-
-        ]
-
-        df = df[
-
-            df[
-                "strike"
-            ].astype(float)
-
-            ==
-
-            float(strike)
-
-        ]
-
-        if df.empty:
-
-            print(
-                "NO OPTION FOUND"
-            )
-
-            return None
-
-        df = df.sort_values(
-            by="expiry"
-        )
-
-        row = df.iloc[0]
-
-        print(
-            "FOUND OPTION:",
-            row["tradingsymbol"]
-        )
-
-        return int(
-            row[
-                "instrument_token"
-            ]
-        )
-
-    except Exception as e:
-
-        print(
-            "OPTION ERROR:",
-            str(e)
-        )
-
-        return None
 
 # ==========================================
 # LOGIN
@@ -206,35 +107,14 @@ def callback():
         ]
 
         # ==========================================
-        # SAVE TOKEN IN MEMORY
+        # SAVE TOKEN IN SESSION
         # ==========================================
 
-        save_access_token(
-            access_token
-        )
+        session[
+            "access_token"
+        ] = access_token
 
-        return f"""
-
-        <div style="
-        font-family:sans-serif;
-        padding:40px;
-        ">
-
-        <h1>
-        ✅ LOGIN SUCCESSFUL
-        </h1>
-
-        <p>
-        Access token generated successfully.
-        </p>
-
-        <a href="/">
-        GO TO BACKTEST
-        </a>
-
-        </div>
-
-        """
+        return redirect("/")
 
     except Exception as e:
 
@@ -257,12 +137,14 @@ def home():
     try:
 
         # ==========================================
-        # CHECK TOKEN
+        # ACCESS TOKEN
         # ==========================================
 
-        access_token = get_access_token()
+        access_token = session.get(
+            "access_token"
+        )
 
-        if access_token == "":
+        if not access_token:
 
             return redirect(
                 "/login"
@@ -280,10 +162,6 @@ def home():
             access_token
         )
 
-        # ==========================================
-        # VERIFY LOGIN
-        # ==========================================
-
         profile = kite.profile()
 
         user_name = profile.get(
@@ -292,7 +170,7 @@ def home():
         )
 
         # ==========================================
-        # FETCH SENSEX DATA
+        # FETCH DATA
         # ==========================================
 
         to_date = datetime.now()
@@ -412,16 +290,11 @@ def home():
         for i in range(1, len(df)):
 
             prev = df.iloc[i - 1]
-
             curr = df.iloc[i]
 
             current_time = curr[
                 "date"
             ].time()
-
-            # ==========================================
-            # ENTRY CUTOFF
-            # ==========================================
 
             entry_cutoff = datetime.strptime(
                 "15:00",
@@ -429,14 +302,9 @@ def home():
             ).time()
 
             allow_new_trade = (
-
                 current_time
                 < entry_cutoff
             )
-
-            # ==========================================
-            # FORCE EXIT
-            # ==========================================
 
             squareoff_time = datetime.strptime(
                 "15:25",
@@ -444,14 +312,9 @@ def home():
             ).time()
 
             force_squareoff = (
-
                 current_time
                 >= squareoff_time
             )
-
-            # ==========================================
-            # BUY SIGNAL
-            # ==========================================
 
             buy_signal = (
 
@@ -464,10 +327,6 @@ def home():
                 <= prev["EMA21"]
 
             )
-
-            # ==========================================
-            # SELL SIGNAL
-            # ==========================================
 
             sell_signal = (
 
@@ -536,7 +395,7 @@ def home():
                     ) * 100
 
             # ==========================================
-            # BUY POSITION
+            # BUY EXIT
             # ==========================================
 
             elif position == "BUY":
@@ -552,20 +411,16 @@ def home():
                 )
 
                 trailing_sl_hit = (
-
                     curr["close"]
                     < trailing_stop
                 )
 
                 hard_sl_price = (
-
                     entry_price
                     * (1 - hard_sl_percent)
-
                 )
 
                 hard_sl_hit = (
-
                     curr["close"]
                     < hard_sl_price
                 )
@@ -575,18 +430,9 @@ def home():
                 if (
 
                     force_squareoff
-
-                    or
-
-                    trailing_sl_hit
-
-                    or
-
-                    hard_sl_hit
-
-                    or
-
-                    crossover_exit
+                    or trailing_sl_hit
+                    or hard_sl_hit
+                    or crossover_exit
 
                 ):
 
@@ -599,35 +445,8 @@ def home():
                         - entry_price
                     )
 
-                    option_buy_price = round(
-                        entry_price * 0.0025,
-                        2
-                    )
-
-                    option_sell_price = round(
-                        option_buy_price
-                        + (pnl * 0.5),
-                        2
-                    )
-
-                    minimum_option_exit = (
-                        option_buy_price * 0.80
-                    )
-
-                    option_sell_price = max(
-                        option_sell_price,
-                        minimum_option_exit
-                    )
-
                     profit_amount = round(
-
-                        (
-                            option_sell_price
-                            - option_buy_price
-                        )
-
-                        * lot_size,
-
+                        pnl * lot_size,
                         2
                     )
 
@@ -646,22 +465,10 @@ def home():
                         curr["date"],
 
                         "entry_spot":
-                        round(
-                            entry_price,
-                            2
-                        ),
+                        round(entry_price, 2),
 
                         "exit_spot":
-                        round(
-                            exit_price,
-                            2
-                        ),
-
-                        "option_buy":
-                        option_buy_price,
-
-                        "option_sell":
-                        option_sell_price,
+                        round(exit_price, 2),
 
                         "profit_amount":
                         profit_amount,
@@ -689,7 +496,7 @@ def home():
                     position = None
 
             # ==========================================
-            # SELL POSITION
+            # SELL EXIT
             # ==========================================
 
             elif position == "SELL":
@@ -705,20 +512,16 @@ def home():
                 )
 
                 trailing_sl_hit = (
-
                     curr["close"]
                     > trailing_stop
                 )
 
                 hard_sl_price = (
-
                     entry_price
                     * (1 + hard_sl_percent)
-
                 )
 
                 hard_sl_hit = (
-
                     curr["close"]
                     > hard_sl_price
                 )
@@ -728,18 +531,9 @@ def home():
                 if (
 
                     force_squareoff
-
-                    or
-
-                    trailing_sl_hit
-
-                    or
-
-                    hard_sl_hit
-
-                    or
-
-                    crossover_exit
+                    or trailing_sl_hit
+                    or hard_sl_hit
+                    or crossover_exit
 
                 ):
 
@@ -752,35 +546,8 @@ def home():
                         - exit_price
                     )
 
-                    option_buy_price = round(
-                        entry_price * 0.0025,
-                        2
-                    )
-
-                    option_sell_price = round(
-                        option_buy_price
-                        + (pnl * 0.5),
-                        2
-                    )
-
-                    minimum_option_exit = (
-                        option_buy_price * 0.80
-                    )
-
-                    option_sell_price = max(
-                        option_sell_price,
-                        minimum_option_exit
-                    )
-
                     profit_amount = round(
-
-                        (
-                            option_sell_price
-                            - option_buy_price
-                        )
-
-                        * lot_size,
-
+                        pnl * lot_size,
                         2
                     )
 
@@ -799,22 +566,10 @@ def home():
                         curr["date"],
 
                         "entry_spot":
-                        round(
-                            entry_price,
-                            2
-                        ),
+                        round(entry_price, 2),
 
                         "exit_spot":
-                        round(
-                            exit_price,
-                            2
-                        ),
-
-                        "option_buy":
-                        option_buy_price,
-
-                        "option_sell":
-                        option_sell_price,
+                        round(exit_price, 2),
 
                         "profit_amount":
                         profit_amount,
@@ -872,13 +627,11 @@ def home():
         )
 
         wins = len(
-
             trades_df[
                 trades_df[
                     "profit_amount"
                 ] > 0
             ]
-
         )
 
         losses = (
@@ -893,10 +646,6 @@ def home():
         win_rate = (
             wins / total_trades
         ) * 100
-
-        # ==========================================
-        # EXPORT
-        # ==========================================
 
         excel_file = (
             "backtest_results.xlsx"
