@@ -136,6 +136,80 @@ def get_option_token(
         return None
 
 # ==========================================
+# GET OPTION PREMIUM PRICE
+# ==========================================
+
+def get_option_price(
+
+    kite,
+    option_token,
+    candle_time
+
+):
+
+    try:
+
+        from_dt = candle_time - timedelta(
+            minutes=5
+        )
+
+        to_dt = candle_time + timedelta(
+            minutes=5
+        )
+
+        candles = kite.historical_data(
+
+            instrument_token=option_token,
+
+            from_date=from_dt,
+
+            to_date=to_dt,
+
+            interval="5minute"
+
+        )
+
+        if not candles:
+
+            return None
+
+        option_df = pd.DataFrame(
+            candles
+        )
+
+        option_df["date"] = pd.to_datetime(
+            option_df["date"]
+        )
+
+        match = option_df[
+
+            option_df["date"]
+            == candle_time
+
+        ]
+
+        if match.empty:
+
+            return None
+
+        premium_price = float(
+
+            match.iloc[0]["close"]
+
+        )
+
+        return premium_price
+
+    except Exception as e:
+
+        print(
+            "OPTION PRICE ERROR:",
+            str(e)
+        )
+
+        return None
+
+# ==========================================
 # HOME
 # ==========================================
 
@@ -143,10 +217,6 @@ def get_option_token(
 def dashboard():
 
     try:
-
-        # ==========================================
-        # CHECK TOKEN
-        # ==========================================
 
         if ACCESS_TOKEN == "":
 
@@ -170,10 +240,6 @@ def dashboard():
             ACCESS_TOKEN
         )
 
-        # ==========================================
-        # VERIFY LOGIN
-        # ==========================================
-
         profile = kite.profile()
 
         user_name = profile.get(
@@ -189,7 +255,7 @@ def dashboard():
 
         from_date = (
             to_date
-            - timedelta(days=30)
+            - timedelta(days=10)
         )
 
         data = kite.historical_data(
@@ -201,6 +267,7 @@ def dashboard():
             to_date=to_date,
 
             interval="5minute"
+
         )
 
         if not data:
@@ -212,10 +279,6 @@ def dashboard():
             </h2>
 
             """
-
-        # ==========================================
-        # DATAFRAME
-        # ==========================================
 
         df = pd.DataFrame(data)
 
@@ -289,22 +352,22 @@ def dashboard():
 
         entry_time = None
 
-        highest_price = 0
-
         current_strike = None
+
+        current_option = None
 
         trades = []
 
-        trail_points = 30
+        highest_price = 0
+
+        trail_points = 20
 
         trail_activation = 30
-
-        hard_sl_percent = 0.20
 
         lot_size = 20
 
         # ==========================================
-        # MAIN LOOP
+        # LOOP
         # ==========================================
 
         for i in range(1, len(df)):
@@ -326,10 +389,11 @@ def dashboard():
                 "%H:%M"
             ).time()
 
-            allow_new_trade = (
+            allow_entry = (
 
                 current_time
                 < entry_cutoff
+
             )
 
             # ==========================================
@@ -341,10 +405,11 @@ def dashboard():
                 "%H:%M"
             ).time()
 
-            force_squareoff = (
+            force_exit = (
 
                 current_time
                 >= squareoff_time
+
             )
 
             # ==========================================
@@ -389,35 +454,21 @@ def dashboard():
 
                 and
 
-                allow_new_trade
+                allow_entry
 
             ):
 
+                current_strike = round(
+                    curr["close"] / 100
+                ) * 100
+
                 # ==========================================
-                # BUY ENTRY
+                # BUY CE
                 # ==========================================
 
                 if buy_signal:
 
-                    position = "BUY"
-
-                    entry_price = curr[
-                        "close"
-                    ]
-
-                    entry_time = curr[
-                        "date"
-                    ]
-
-                    highest_price = curr[
-                        "close"
-                    ]
-
-                    current_strike = round(
-                        curr["close"] / 100
-                    ) * 100
-
-                    ce_token = get_option_token(
+                    option_token = get_option_token(
 
                         kite,
                         current_strike,
@@ -425,36 +476,39 @@ def dashboard():
 
                     )
 
-                    print(
-                        "CE TOKEN:",
-                        ce_token
+                    if option_token is None:
+                        continue
+
+                    premium = get_option_price(
+
+                        kite,
+                        option_token,
+                        curr["date"]
+
                     )
 
-                # ==========================================
-                # SELL ENTRY
-                # ==========================================
+                    if premium is None:
+                        continue
 
-                elif sell_signal:
+                    position = "BUY_CE"
 
-                    position = "SELL"
+                    current_option = option_token
 
-                    entry_price = curr[
-                        "close"
-                    ]
+                    entry_price = premium
 
                     entry_time = curr[
                         "date"
                     ]
 
-                    highest_price = curr[
-                        "close"
-                    ]
+                    highest_price = premium
 
-                    current_strike = round(
-                        curr["close"] / 100
-                    ) * 100
+                # ==========================================
+                # BUY PE
+                # ==========================================
 
-                    pe_token = get_option_token(
+                elif sell_signal:
+
+                    option_token = get_option_token(
 
                         kite,
                         current_strike,
@@ -462,24 +516,60 @@ def dashboard():
 
                     )
 
-                    print(
-                        "PE TOKEN:",
-                        pe_token
+                    if option_token is None:
+                        continue
+
+                    premium = get_option_price(
+
+                        kite,
+                        option_token,
+                        curr["date"]
+
                     )
 
+                    if premium is None:
+                        continue
+
+                    position = "BUY_PE"
+
+                    current_option = option_token
+
+                    entry_price = premium
+
+                    entry_time = curr[
+                        "date"
+                    ]
+
+                    highest_price = premium
+
             # ==========================================
-            # BUY POSITION
+            # ACTIVE POSITION
             # ==========================================
 
-            elif position == "BUY":
+            elif position is not None:
+
+                current_premium = get_option_price(
+
+                    kite,
+                    current_option,
+                    curr["date"]
+
+                )
+
+                if current_premium is None:
+                    continue
+
+                # ==========================================
+                # TRACK HIGH
+                # ==========================================
 
                 highest_price = max(
                     highest_price,
-                    curr["close"]
+                    current_premium
                 )
 
                 # ==========================================
-                # ACTIVATE TRAIL ONLY AFTER PROFIT
+                # TRAILING ACTIVATION
                 # ==========================================
 
                 trail_active = (
@@ -491,43 +581,36 @@ def dashboard():
 
                 if trail_active:
 
-                    trailing_stop = (
+                    trailing_sl = (
                         highest_price
                         - trail_points
                     )
 
-                    trailing_sl_hit = (
+                    trailing_hit = (
 
-                        curr["close"]
-                        < trailing_stop
+                        current_premium
+                        <= trailing_sl
+
                     )
 
                 else:
 
-                    trailing_sl_hit = False
+                    trailing_hit = False
 
                 # ==========================================
-                # HARD SL
+                # 15% SL
                 # ==========================================
 
-                hard_sl_price = (
-
-                    entry_price
-                    * (1 - hard_sl_percent)
-
+                sl_price = (
+                    entry_price * 0.85
                 )
 
                 hard_sl_hit = (
 
-                    curr["close"]
-                    < hard_sl_price
+                    current_premium
+                    <= sl_price
+
                 )
-
-                # ==========================================
-                # EMA EXIT
-                # ==========================================
-
-                crossover_exit = sell_signal
 
                 # ==========================================
                 # EXIT
@@ -535,25 +618,19 @@ def dashboard():
 
                 if (
 
-                    force_squareoff
+                    force_exit
 
                     or
 
-                    trailing_sl_hit
+                    trailing_hit
 
                     or
 
                     hard_sl_hit
 
-                    or
-
-                    crossover_exit
-
                 ):
 
-                    exit_price = curr[
-                        "close"
-                    ]
+                    exit_price = current_premium
 
                     pnl = (
                         exit_price
@@ -567,11 +644,11 @@ def dashboard():
 
                     trades.append({
 
-                        "trade_type":
-                        "BUY CE",
+                        "trade":
+                        position,
 
                         "strike":
-                        f"{current_strike} CE",
+                        current_strike,
 
                         "entry_time":
                         entry_time,
@@ -579,15 +656,21 @@ def dashboard():
                         "exit_time":
                         curr["date"],
 
-                        "entry_spot":
+                        "entry_premium":
                         round(
                             entry_price,
                             2
                         ),
 
-                        "exit_spot":
+                        "exit_premium":
                         round(
                             exit_price,
+                            2
+                        ),
+
+                        "points":
+                        round(
+                            pnl,
                             2
                         ),
 
@@ -596,174 +679,76 @@ def dashboard():
 
                         "exit_reason":
 
-                        "DAY END EXIT"
-                        if force_squareoff
-
-                        else
-
-                        "HARD SL"
-                        if hard_sl_hit
+                        "DAY END"
+                        if force_exit
 
                         else
 
                         "TRAIL SL"
-                        if trailing_sl_hit
+                        if trailing_hit
 
                         else
 
-                        "EMA EXIT"
+                        "15% SL"
                     })
 
-                    position = None
+                    # ==========================================
+                    # REVERSE ENTRY
+                    # ==========================================
 
-            # ==========================================
-            # SELL POSITION
-            # ==========================================
+                    if hard_sl_hit and allow_entry:
 
-            elif position == "SELL":
+                        reverse_type = (
 
-                highest_price = min(
-                    highest_price,
-                    curr["close"]
-                )
+                            "PE"
+                            if position == "BUY_CE"
+                            else "CE"
 
-                # ==========================================
-                # ACTIVATE TRAIL ONLY AFTER PROFIT
-                # ==========================================
+                        )
 
-                trail_active = (
+                        reverse_token = get_option_token(
 
-                    highest_price
-                    <= entry_price - trail_activation
+                            kite,
+                            current_strike,
+                            reverse_type
 
-                )
+                        )
 
-                if trail_active:
+                        reverse_price = get_option_price(
 
-                    trailing_stop = (
-                        highest_price
-                        + trail_points
-                    )
+                            kite,
+                            reverse_token,
+                            curr["date"]
 
-                    trailing_sl_hit = (
+                        )
 
-                        curr["close"]
-                        > trailing_stop
-                    )
+                        if reverse_price is not None:
 
-                else:
+                            position = (
 
-                    trailing_sl_hit = False
+                                "BUY_PE"
+                                if reverse_type == "PE"
+                                else "BUY_CE"
 
-                # ==========================================
-                # HARD SL
-                # ==========================================
+                            )
 
-                hard_sl_price = (
+                            current_option = reverse_token
 
-                    entry_price
-                    * (1 + hard_sl_percent)
+                            entry_price = reverse_price
 
-                )
+                            entry_time = curr[
+                                "date"
+                            ]
 
-                hard_sl_hit = (
+                            highest_price = reverse_price
 
-                    curr["close"]
-                    > hard_sl_price
-                )
+                        else:
 
-                # ==========================================
-                # EMA EXIT
-                # ==========================================
+                            position = None
 
-                crossover_exit = buy_signal
+                    else:
 
-                # ==========================================
-                # EXIT
-                # ==========================================
-
-                if (
-
-                    force_squareoff
-
-                    or
-
-                    trailing_sl_hit
-
-                    or
-
-                    hard_sl_hit
-
-                    or
-
-                    crossover_exit
-
-                ):
-
-                    exit_price = curr[
-                        "close"
-                    ]
-
-                    pnl = (
-                        entry_price
-                        - exit_price
-                    )
-
-                    profit_amount = round(
-                        pnl * lot_size,
-                        2
-                    )
-
-                    trades.append({
-
-                        "trade_type":
-                        "BUY PE",
-
-                        "strike":
-                        f"{current_strike} PE",
-
-                        "entry_time":
-                        entry_time,
-
-                        "exit_time":
-                        curr["date"],
-
-                        "entry_spot":
-                        round(
-                            entry_price,
-                            2
-                        ),
-
-                        "exit_spot":
-                        round(
-                            exit_price,
-                            2
-                        ),
-
-                        "profit_amount":
-                        profit_amount,
-
-                        "exit_reason":
-
-                        "DAY END EXIT"
-                        if force_squareoff
-
-                        else
-
-                        "HARD SL"
-                        if hard_sl_hit
-
-                        else
-
-                        "TRAIL SL"
-                        if trailing_sl_hit
-
-                        else
-
-                        "EMA EXIT"
-                    })
-
-                    position = None
+                        position = None
 
         # ==========================================
         # RESULTS
@@ -799,6 +784,10 @@ def dashboard():
         # STATS
         # ==========================================
 
+        total_profit = trades_df[
+            "profit_amount"
+        ].sum()
+
         total_trades = len(
             trades_df
         )
@@ -813,21 +802,12 @@ def dashboard():
 
         )
 
-        losses = (
-            total_trades
-            - wins
-        )
-
-        total_profit = trades_df[
-            "profit_amount"
-        ].sum()
-
         win_rate = (
             wins / total_trades
         ) * 100
 
         # ==========================================
-        # EXPORT EXCEL
+        # EXPORT
         # ==========================================
 
         excel_file = (
@@ -840,7 +820,7 @@ def dashboard():
         )
 
         # ==========================================
-        # HTML REPORT
+        # REPORT
         # ==========================================
 
         return f"""
@@ -848,12 +828,10 @@ def dashboard():
         <div style="
         font-family:sans-serif;
         padding:30px;
-        max-width:900px;
-        margin:auto;
         ">
 
         <h1>
-        📊 EMA BACKTEST REPORT
+        📊 REAL OPTION PREMIUM REPORT
         </h1>
 
         <hr>
@@ -871,11 +849,6 @@ def dashboard():
         <p>
         <b>Winning Trades:</b>
         {wins}
-        </p>
-
-        <p>
-        <b>Losing Trades:</b>
-        {losses}
         </p>
 
         <p>
@@ -903,7 +876,7 @@ def dashboard():
         return f"""
 
         <h2>
-        ERROR :
+        ERROR:
         {str(e)}
         </h2>
 
