@@ -127,7 +127,30 @@ def callback():
                 access_token
             )
 
-        return redirect("/")
+        return """
+
+        <div style="
+        font-family:sans-serif;
+        padding:40px;
+        ">
+
+        <h1>
+        ✅ LOGIN SUCCESSFUL
+        </h1>
+
+        <p>
+        Access token generated successfully.
+        </p>
+
+        <br>
+
+        <a href="/">
+        OPEN BACKTEST
+        </a>
+
+        </div>
+
+        """
 
     except Exception as e:
 
