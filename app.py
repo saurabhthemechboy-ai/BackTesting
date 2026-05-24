@@ -33,6 +33,127 @@ API_SECRET = os.getenv(
 ).strip()
 
 # ==========================================
+# LOAD NFO INSTRUMENTS
+# ==========================================
+
+def load_instruments(kite):
+
+    global OPTION_CACHE
+
+    if OPTION_CACHE is None:
+
+        print(
+            "LOADING NFO INSTRUMENTS..."
+        )
+
+        instruments = kite.instruments(
+            "NFO"
+        )
+
+        OPTION_CACHE = pd.DataFrame(
+            instruments
+        )
+
+        print(
+            "NFO LOADED:",
+            len(OPTION_CACHE)
+        )
+
+    return OPTION_CACHE
+
+# ==========================================
+# GET ATM OPTION TOKEN
+# ==========================================
+
+def get_option_token(
+
+    kite,
+    strike,
+    option_type
+
+):
+
+    try:
+
+        instruments_df = load_instruments(
+            kite
+        )
+
+        # ==========================================
+        # FILTER SENSEX
+        # ==========================================
+
+        df = instruments_df[
+
+            instruments_df[
+                "name"
+            ] == "SENSEX"
+
+        ]
+
+        # ==========================================
+        # CE / PE
+        # ==========================================
+
+        df = df[
+
+            df[
+                "instrument_type"
+            ] == option_type
+
+        ]
+
+        # ==========================================
+        # STRIKE
+        # ==========================================
+
+        df = df[
+
+            df[
+                "strike"
+            ].astype(float)
+
+            ==
+
+            float(strike)
+
+        ]
+
+        # ==========================================
+        # SORT NEAREST EXPIRY
+        # ==========================================
+
+        df = df.sort_values(
+            by="expiry"
+        )
+
+        if df.empty:
+
+            return None
+
+        row = df.iloc[0]
+
+        print(
+            "OPTION FOUND:",
+            row["tradingsymbol"]
+        )
+
+        return int(
+            row[
+                "instrument_token"
+            ]
+        )
+
+    except Exception as e:
+
+        print(
+            "OPTION ERROR:",
+            str(e)
+        )
+
+        return None
+
+# ==========================================
 # HOME PAGE
 # ==========================================
 
@@ -114,7 +235,7 @@ def callback():
         ]
 
         # ==========================================
-        # SAVE TOKEN IN APP MEMORY
+        # SAVE TOKEN
         # ==========================================
 
         app.config[
@@ -122,7 +243,7 @@ def callback():
         ] = access_token
 
         # ==========================================
-        # AUTO OPEN DASHBOARD
+        # AUTO REDIRECT
         # ==========================================
 
         return redirect(
@@ -195,7 +316,7 @@ def dashboard():
         )
 
         # ==========================================
-        # FETCH DATA
+        # FETCH SENSEX DATA
         # ==========================================
 
         to_date = datetime.now()
@@ -404,6 +525,10 @@ def dashboard():
 
             ):
 
+                # ==========================================
+                # BUY ENTRY
+                # ==========================================
+
                 if buy_signal:
 
                     position = "BUY"
@@ -424,6 +549,27 @@ def dashboard():
                         curr["close"] / 100
                     ) * 100
 
+                    # ==========================================
+                    # REAL CE TOKEN
+                    # ==========================================
+
+                    ce_token = get_option_token(
+
+                        kite,
+                        current_strike,
+                        "CE"
+
+                    )
+
+                    print(
+                        "CE TOKEN:",
+                        ce_token
+                    )
+
+                # ==========================================
+                # SELL ENTRY
+                # ==========================================
+
                 elif sell_signal:
 
                     position = "SELL"
@@ -443,6 +589,23 @@ def dashboard():
                     current_strike = round(
                         curr["close"] / 100
                     ) * 100
+
+                    # ==========================================
+                    # REAL PE TOKEN
+                    # ==========================================
+
+                    pe_token = get_option_token(
+
+                        kite,
+                        current_strike,
+                        "PE"
+
+                    )
+
+                    print(
+                        "PE TOKEN:",
+                        pe_token
+                    )
 
             # ==========================================
             # BUY POSITION
