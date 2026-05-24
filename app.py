@@ -33,15 +33,42 @@ API_SECRET = os.getenv(
 ).strip()
 
 # ==========================================
-# ACCESS TOKEN
+# ACCESS TOKEN FILE
+# ==========================================
+
+TOKEN_FILE = "access_token.txt"
+
+# ==========================================
+# GET ACCESS TOKEN
 # ==========================================
 
 def get_access_token():
 
-    return os.getenv(
-        "KITE_ACCESS_TOKEN",
-        ""
-    ).strip()
+    try:
+
+        with open(
+            TOKEN_FILE,
+            "r"
+        ) as f:
+
+            return f.read().strip()
+
+    except:
+
+        return ""
+
+# ==========================================
+# SAVE ACCESS TOKEN
+# ==========================================
+
+def save_access_token(token):
+
+    with open(
+        TOKEN_FILE,
+        "w"
+    ) as f:
+
+        f.write(token)
 
 # ==========================================
 # LOAD INSTRUMENTS ONCE
@@ -90,10 +117,6 @@ def get_option_token(
             kite
         )
 
-        # ==========================================
-        # FILTER SENSEX
-        # ==========================================
-
         df = instruments_df[
 
             instruments_df[
@@ -102,10 +125,6 @@ def get_option_token(
 
         ]
 
-        # ==========================================
-        # CE / PE
-        # ==========================================
-
         df = df[
 
             df[
@@ -113,10 +132,6 @@ def get_option_token(
             ] == option_type
 
         ]
-
-        # ==========================================
-        # STRIKE
-        # ==========================================
 
         df = df[
 
@@ -137,10 +152,6 @@ def get_option_token(
             )
 
             return None
-
-        # ==========================================
-        # NEAREST EXPIRY
-        # ==========================================
 
         df = df.sort_values(
             by="expiry"
@@ -201,7 +212,9 @@ def callback():
         )
 
         data = kite.generate_session(
+
             request_token,
+
             api_secret=API_SECRET
         )
 
@@ -209,25 +222,46 @@ def callback():
             "access_token"
         ]
 
+        # ==========================================
+        # SAVE TOKEN
+        # ==========================================
+
+        save_access_token(
+            access_token
+        )
+
         return f"""
 
+        <div style="
+        font-family:sans-serif;
+        padding:40px;
+        ">
+
         <h1>
-        ACCESS TOKEN
+        ✅ ACCESS TOKEN SAVED
         </h1>
 
-        <textarea
-        rows="8"
-        cols="100"
-        >
-{access_token}
-        </textarea>
+        <p>
+        Your app is now logged in.
+        </p>
+
+        <a href="/">
+        GO TO BACKTEST
+        </a>
+
+        </div>
 
         """
 
     except Exception as e:
 
         return f"""
-        ERROR : {str(e)}
+
+        <h2>
+        ERROR :
+        {str(e)}
+        </h2>
+
         """
 
 # ==========================================
@@ -239,7 +273,13 @@ def home():
 
     try:
 
-        if get_access_token() == "":
+        # ==========================================
+        # CHECK TOKEN
+        # ==========================================
+
+        access_token = get_access_token()
+
+        if access_token == "":
 
             return redirect(
                 "/login"
@@ -254,8 +294,12 @@ def home():
         )
 
         kite.set_access_token(
-            get_access_token()
+            access_token
         )
+
+        # ==========================================
+        # VERIFY LOGIN
+        # ==========================================
 
         profile = kite.profile()
 
@@ -514,96 +558,6 @@ def home():
 
             elif position == "BUY":
 
-                if force_squareoff:
-
-                    exit_price = curr[
-                        "close"
-                    ]
-
-                    pnl = (
-                        exit_price
-                        - entry_price
-                    )
-
-                    option_buy_price = round(
-                        entry_price * 0.0025,
-                        2
-                    )
-
-                    option_sell_price = round(
-                        option_buy_price
-                        + (pnl * 0.5),
-                        2
-                    )
-
-                    minimum_option_exit = (
-                        option_buy_price * 0.80
-                    )
-
-                    option_sell_price = max(
-                        option_sell_price,
-                        minimum_option_exit
-                    )
-
-                    profit_amount = round(
-
-                        (
-                            option_sell_price
-                            - option_buy_price
-                        )
-
-                        * lot_size,
-
-                        2
-                    )
-
-                    trades.append({
-
-                        "trade_type":
-                        "BUY CE",
-
-                        "strike":
-                        f"{current_strike} CE",
-
-                        "entry_time":
-                        entry_time,
-
-                        "exit_time":
-                        curr["date"],
-
-                        "entry_spot":
-                        round(
-                            entry_price,
-                            2
-                        ),
-
-                        "exit_spot":
-                        round(
-                            exit_price,
-                            2
-                        ),
-
-                        "option_buy":
-                        option_buy_price,
-
-                        "option_sell":
-                        option_sell_price,
-
-                        "profit_amount":
-                        profit_amount,
-
-                        "exit_reason":
-                        "DAY END EXIT"
-                    })
-
-                    position = None
-
-                    continue
-
-                # ==========================================
-                # TRAILING
-                # ==========================================
-
                 highest_price = max(
                     highest_price,
                     curr["close"]
@@ -636,6 +590,10 @@ def home():
                 crossover_exit = sell_signal
 
                 if (
+
+                    force_squareoff
+
+                    or
 
                     trailing_sl_hit
 
@@ -727,6 +685,11 @@ def home():
 
                         "exit_reason":
 
+                        "DAY END EXIT"
+                        if force_squareoff
+
+                        else
+
                         "HARD SL"
                         if hard_sl_hit
 
@@ -740,133 +703,13 @@ def home():
                         "EMA EXIT"
                     })
 
-                    # ==========================================
-                    # REVERSE ONLY ON HARD SL
-                    # ==========================================
-
-                    if (
-
-                        hard_sl_hit
-
-                        and
-
-                        allow_new_trade
-
-                    ):
-
-                        position = "SELL"
-
-                        entry_price = curr[
-                            "close"
-                        ]
-
-                        entry_time = curr[
-                            "date"
-                        ]
-
-                        highest_price = curr[
-                            "close"
-                        ]
-
-                    else:
-
-                        position = None
+                    position = None
 
             # ==========================================
             # SELL POSITION
             # ==========================================
 
             elif position == "SELL":
-
-                if force_squareoff:
-
-                    exit_price = curr[
-                        "close"
-                    ]
-
-                    pnl = (
-                        entry_price
-                        - exit_price
-                    )
-
-                    option_buy_price = round(
-                        entry_price * 0.0025,
-                        2
-                    )
-
-                    option_sell_price = round(
-                        option_buy_price
-                        + (pnl * 0.5),
-                        2
-                    )
-
-                    minimum_option_exit = (
-                        option_buy_price * 0.80
-                    )
-
-                    option_sell_price = max(
-                        option_sell_price,
-                        minimum_option_exit
-                    )
-
-                    profit_amount = round(
-
-                        (
-                            option_sell_price
-                            - option_buy_price
-                        )
-
-                        * lot_size,
-
-                        2
-                    )
-
-                    trades.append({
-
-                        "trade_type":
-                        "BUY PE",
-
-                        "strike":
-                        f"{current_strike} PE",
-
-                        "entry_time":
-                        entry_time,
-
-                        "exit_time":
-                        curr["date"],
-
-                        "entry_spot":
-                        round(
-                            entry_price,
-                            2
-                        ),
-
-                        "exit_spot":
-                        round(
-                            exit_price,
-                            2
-                        ),
-
-                        "option_buy":
-                        option_buy_price,
-
-                        "option_sell":
-                        option_sell_price,
-
-                        "profit_amount":
-                        profit_amount,
-
-                        "exit_reason":
-                        "DAY END EXIT"
-                    })
-
-                    position = None
-
-                    continue
-
-                # ==========================================
-                # TRAILING
-                # ==========================================
 
                 highest_price = min(
                     highest_price,
@@ -901,6 +744,10 @@ def home():
 
                 if (
 
+                    force_squareoff
+
+                    or
+
                     trailing_sl_hit
 
                     or
@@ -991,6 +838,11 @@ def home():
 
                         "exit_reason":
 
+                        "DAY END EXIT"
+                        if force_squareoff
+
+                        else
+
                         "HARD SL"
                         if hard_sl_hit
 
@@ -1004,37 +856,7 @@ def home():
                         "EMA EXIT"
                     })
 
-                    # ==========================================
-                    # REVERSE ONLY ON HARD SL
-                    # ==========================================
-
-                    if (
-
-                        hard_sl_hit
-
-                        and
-
-                        allow_new_trade
-
-                    ):
-
-                        position = "BUY"
-
-                        entry_price = curr[
-                            "close"
-                        ]
-
-                        entry_time = curr[
-                            "date"
-                        ]
-
-                        highest_price = curr[
-                            "close"
-                        ]
-
-                    else:
-
-                        position = None
+                    position = None
 
         # ==========================================
         # RESULTS
@@ -1153,6 +975,12 @@ def home():
         📥 DOWNLOAD EXCEL REPORT
         </a>
 
+        <br><br>
+
+        <a href="/login">
+        🔑 REFRESH LOGIN
+        </a>
+
         </div>
 
         """
@@ -1160,8 +988,12 @@ def home():
     except Exception as e:
 
         return f"""
+
+        <h2>
         ERROR :
         {str(e)}
+        </h2>
+
         """
 
 # ==========================================
