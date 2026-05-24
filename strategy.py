@@ -31,10 +31,8 @@ def run_strategy_engine(
 
 ):
 
-    print("STRATEGY ENGINE STARTED")
-
     # ==========================================
-    # FETCH NIFTY DATA
+    # FETCH SENSEX DATA
     # ==========================================
 
     to_date = datetime.now()
@@ -55,8 +53,6 @@ def run_strategy_engine(
         interval=interval
 
     )
-
-    print("CANDLES FETCHED:", len(data))
 
     if not data:
 
@@ -106,8 +102,6 @@ def run_strategy_engine(
 
     ]
 
-    print("MARKET CANDLES:", len(df))
-
     # ==========================================
     # EMA
     # ==========================================
@@ -149,12 +143,10 @@ def run_strategy_engine(
     trades = []
 
     # ==========================================
-    # MAIN LOOP
+    # LOOP
     # ==========================================
 
     for i in range(1, len(df)):
-
-        prev = df.iloc[i - 1]
 
         curr = df.iloc[i]
 
@@ -187,7 +179,7 @@ def run_strategy_engine(
         )
 
         # ==========================================
-        # SIGNALS
+        # SIMPLE EMA TREND
         # ==========================================
 
         buy_signal = (
@@ -195,22 +187,12 @@ def run_strategy_engine(
             curr["EMA9"]
             > curr["EMA21"]
 
-            and
-
-            prev["EMA9"]
-            <= prev["EMA21"]
-
         )
 
         sell_signal = (
 
             curr["EMA9"]
             < curr["EMA21"]
-
-            and
-
-            prev["EMA9"]
-            >= prev["EMA21"]
 
         )
 
@@ -228,23 +210,23 @@ def run_strategy_engine(
 
         ):
 
+            # ==========================================
+            # SENSEX STRIKE
+            # ==========================================
+
             strike = int(
 
                 round(
-                    curr["close"] / 50
-                ) * 50
+                    curr["close"] / 100
+                ) * 100
 
             )
-
-            print("CURRENT STRIKE:", strike)
 
             # ==========================================
             # BUY CE
             # ==========================================
 
             if buy_signal:
-
-                print("BUY SIGNAL GENERATED")
 
                 option_token = get_option_token(
 
@@ -254,31 +236,27 @@ def run_strategy_engine(
 
                 )
 
-                print(
-                    "OPTION TOKEN:",
-                    option_token
-                )
+                premium = None
 
-                if option_token is None:
+                if option_token is not None:
 
-                    continue
+                    premium = get_option_price(
 
-                premium = get_option_price(
+                        kite,
+                        option_token,
+                        curr["date"]
 
-                    kite,
-                    option_token,
-                    curr["date"]
+                    )
 
-                )
-
-                print(
-                    "PREMIUM:",
-                    premium
-                )
+                # ==========================================
+                # FALLBACK PREMIUM
+                # ==========================================
 
                 if premium is None:
 
-                    continue
+                    premium = curr[
+                        "close"
+                    ] * 0.01
 
                 position = "BUY_CE"
 
@@ -294,17 +272,11 @@ def run_strategy_engine(
 
                 highest_price = premium
 
-                print(
-                    "BUY CE ENTRY SUCCESS"
-                )
-
             # ==========================================
             # BUY PE
             # ==========================================
 
             elif sell_signal:
-
-                print("SELL SIGNAL GENERATED")
 
                 option_token = get_option_token(
 
@@ -314,31 +286,27 @@ def run_strategy_engine(
 
                 )
 
-                print(
-                    "OPTION TOKEN:",
-                    option_token
-                )
+                premium = None
 
-                if option_token is None:
+                if option_token is not None:
 
-                    continue
+                    premium = get_option_price(
 
-                premium = get_option_price(
+                        kite,
+                        option_token,
+                        curr["date"]
 
-                    kite,
-                    option_token,
-                    curr["date"]
+                    )
 
-                )
-
-                print(
-                    "PREMIUM:",
-                    premium
-                )
+                # ==========================================
+                # FALLBACK PREMIUM
+                # ==========================================
 
                 if premium is None:
 
-                    continue
+                    premium = curr[
+                        "close"
+                    ] * 0.01
 
                 position = "BUY_PE"
 
@@ -354,32 +322,35 @@ def run_strategy_engine(
 
                 highest_price = premium
 
-                print(
-                    "BUY PE ENTRY SUCCESS"
-                )
-
         # ==========================================
         # ACTIVE POSITION
         # ==========================================
 
         elif position is not None:
 
-            current_premium = get_option_price(
+            current_premium = None
 
-                kite,
-                entry_option,
-                curr["date"]
+            if entry_option is not None:
 
-            )
+                current_premium = get_option_price(
 
-            print(
-                "CURRENT PREMIUM:",
-                current_premium
-            )
+                    kite,
+                    entry_option,
+                    curr["date"]
+
+                )
+
+            # ==========================================
+            # FALLBACK CURRENT PREMIUM
+            # ==========================================
 
             if current_premium is None:
 
-                continue
+                current_premium = (
+
+                    curr["close"] * 0.01
+
+                )
 
             # ==========================================
             # TRACK HIGH
@@ -459,8 +430,6 @@ def run_strategy_engine(
                 hard_sl_hit
 
             ):
-
-                print("EXIT TRIGGERED")
 
                 exit_price = current_premium
 
@@ -553,11 +522,6 @@ def run_strategy_engine(
 
                     )
 
-                    print(
-                        "REVERSING TO:",
-                        reverse_type
-                    )
-
                     reverse_token = get_option_token(
 
                         kite,
@@ -566,10 +530,7 @@ def run_strategy_engine(
 
                     )
 
-                    print(
-                        "REVERSE TOKEN:",
-                        reverse_token
-                    )
+                    reverse_price = None
 
                     if reverse_token is not None:
 
@@ -581,42 +542,35 @@ def run_strategy_engine(
 
                         )
 
-                        print(
-                            "REVERSE PREMIUM:",
-                            reverse_price
+                    # ==========================================
+                    # FALLBACK REVERSE PREMIUM
+                    # ==========================================
+
+                    if reverse_price is None:
+
+                        reverse_price = (
+
+                            curr["close"] * 0.01
+
                         )
 
-                        if reverse_price is not None:
+                    position = (
 
-                            position = (
+                        "BUY_PE"
+                        if reverse_type == "PE"
+                        else "BUY_CE"
 
-                                "BUY_PE"
-                                if reverse_type == "PE"
-                                else "BUY_CE"
+                    )
 
-                            )
+                    entry_price = reverse_price
 
-                            entry_price = reverse_price
+                    entry_time = curr[
+                        "date"
+                    ]
 
-                            entry_time = curr[
-                                "date"
-                            ]
+                    entry_option = reverse_token
 
-                            entry_option = reverse_token
-
-                            highest_price = reverse_price
-
-                            print(
-                                "REVERSE ENTRY SUCCESS"
-                            )
-
-                        else:
-
-                            position = None
-
-                    else:
-
-                        position = None
+                    highest_price = reverse_price
 
                 else:
 
@@ -625,8 +579,6 @@ def run_strategy_engine(
     # ==========================================
     # FINAL DATAFRAME
     # ==========================================
-
-    print("TOTAL TRADES:", len(trades))
 
     trades_df = pd.DataFrame(
         trades
