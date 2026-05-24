@@ -13,10 +13,11 @@ from kiteconnect import KiteConnect
 app = Flask(__name__)
 
 # ==========================================
-# GLOBAL CACHE
+# GLOBAL VARIABLES
 # ==========================================
 
 OPTION_CACHE = None
+ACCESS_TOKEN = ""
 
 # ==========================================
 # API CONFIG
@@ -33,29 +34,14 @@ API_SECRET = os.getenv(
 ).strip()
 
 # ==========================================
-# ACCESS TOKEN FILE
-# ==========================================
-
-TOKEN_FILE = "access_token.txt"
-
-# ==========================================
 # GET ACCESS TOKEN
 # ==========================================
 
 def get_access_token():
 
-    try:
+    global ACCESS_TOKEN
 
-        with open(
-            TOKEN_FILE,
-            "r"
-        ) as f:
-
-            return f.read().strip()
-
-    except:
-
-        return ""
+    return ACCESS_TOKEN
 
 # ==========================================
 # SAVE ACCESS TOKEN
@@ -63,15 +49,12 @@ def get_access_token():
 
 def save_access_token(token):
 
-    with open(
-        TOKEN_FILE,
-        "w"
-    ) as f:
+    global ACCESS_TOKEN
 
-        f.write(token)
+    ACCESS_TOKEN = token
 
 # ==========================================
-# LOAD INSTRUMENTS ONCE
+# LOAD INSTRUMENTS ONLY ONCE
 # ==========================================
 
 def load_instruments(kite):
@@ -223,7 +206,7 @@ def callback():
         ]
 
         # ==========================================
-        # SAVE TOKEN
+        # SAVE TOKEN IN MEMORY
         # ==========================================
 
         save_access_token(
@@ -238,11 +221,11 @@ def callback():
         ">
 
         <h1>
-        ✅ ACCESS TOKEN SAVED
+        ✅ LOGIN SUCCESSFUL
         </h1>
 
         <p>
-        Your app is now logged in.
+        Access token generated successfully.
         </p>
 
         <a href="/">
@@ -309,7 +292,7 @@ def home():
         )
 
         # ==========================================
-        # FETCH SPOT DATA
+        # FETCH SENSEX DATA
         # ==========================================
 
         to_date = datetime.now()
@@ -423,7 +406,7 @@ def home():
         lot_size = 20
 
         # ==========================================
-        # LOOP
+        # MAIN LOOP
         # ==========================================
 
         for i in range(1, len(df)):
