@@ -1,5 +1,6 @@
 import os
 from datetime import datetime, timedelta
+from flask_session import Session
 
 from flask import Flask
 from flask import request
@@ -12,6 +13,14 @@ import pandas as pd
 from kiteconnect import KiteConnect
 
 app = Flask(__name__)
+
+app.secret_key = "sensex_secret_key"
+
+app.config["SESSION_PERMANENT"] = False
+
+app.config["SESSION_TYPE"] = "filesystem"
+
+Session(app)
 
 # ==========================================
 # SECRET KEY
