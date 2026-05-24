@@ -1,12 +1,14 @@
 import os
-from datetime import datetime, timedelta
-
 from flask import Flask
 from flask import send_file
 
+from kiteconnect import KiteConnect
+
 import pandas as pd
 
-from kiteconnect import KiteConnect
+# ==========================================
+# FLASK APP
+# ==========================================
 
 app = Flask(__name__)
 
@@ -31,192 +33,49 @@ ACCESS_TOKEN = os.getenv(
 ).strip()
 
 # ==========================================
-# LOAD NFO INSTRUMENTS
+# BASIC SETTINGS
 # ==========================================
 
-def load_instruments(kite):
+LOT_SIZE = 20
 
-    global OPTION_CACHE
+ENTRY_CUTOFF = "15:00"
 
-    if OPTION_CACHE is None:
+SQUAREOFF_TIME = "15:25"
 
-        print(
-            "LOADING NFO INSTRUMENTS..."
-        )
+TRAIL_POINTS = 20
 
-        instruments = kite.instruments(
-            "NFO"
-        )
+TRAIL_ACTIVATION = 30
 
-        OPTION_CACHE = pd.DataFrame(
-            instruments
-        )
+STOPLOSS_PERCENT = 0.15
 
-        print(
-            "NFO LOADED:",
-            len(OPTION_CACHE)
-        )
+BACKTEST_DAYS = 10
 
-    return OPTION_CACHE
+INTERVAL = "5minute"
 
 # ==========================================
-# GET OPTION TOKEN
+# IMPORT MODULES
 # ==========================================
 
-def get_option_token(
+from premium_engine import *
 
-    kite,
-    strike,
-    option_type
+from reverse_engine import *
 
-):
+from report_engine import *
 
-    try:
-
-        instruments_df = load_instruments(
-            kite
-        )
-
-        df = instruments_df[
-
-            instruments_df[
-                "name"
-            ] == "SENSEX"
-
-        ]
-
-        df = df[
-
-            df[
-                "instrument_type"
-            ] == option_type
-
-        ]
-
-        df = df[
-
-            df[
-                "strike"
-            ].astype(float)
-
-            ==
-
-            float(strike)
-
-        ]
-
-        df = df.sort_values(
-            by="expiry"
-        )
-
-        if df.empty:
-
-            return None
-
-        row = df.iloc[0]
-
-        print(
-            "OPTION FOUND:",
-            row["tradingsymbol"]
-        )
-
-        return int(
-            row[
-                "instrument_token"
-            ]
-        )
-
-    except Exception as e:
-
-        print(
-            "OPTION ERROR:",
-            str(e)
-        )
-
-        return None
+from strategy import *
 
 # ==========================================
-# GET OPTION PREMIUM PRICE
-# ==========================================
-
-def get_option_price(
-
-    kite,
-    option_token,
-    candle_time
-
-):
-
-    try:
-
-        from_dt = candle_time - timedelta(
-            minutes=5
-        )
-
-        to_dt = candle_time + timedelta(
-            minutes=5
-        )
-
-        candles = kite.historical_data(
-
-            instrument_token=option_token,
-
-            from_date=from_dt,
-
-            to_date=to_dt,
-
-            interval="5minute"
-
-        )
-
-        if not candles:
-
-            return None
-
-        option_df = pd.DataFrame(
-            candles
-        )
-
-        option_df["date"] = pd.to_datetime(
-            option_df["date"]
-        )
-
-        match = option_df[
-
-            option_df["date"]
-            == candle_time
-
-        ]
-
-        if match.empty:
-
-            return None
-
-        premium_price = float(
-
-            match.iloc[0]["close"]
-
-        )
-
-        return premium_price
-
-    except Exception as e:
-
-        print(
-            "OPTION PRICE ERROR:",
-            str(e)
-        )
-
-        return None
-
-# ==========================================
-# HOME
+# HOME ROUTE
 # ==========================================
 
 @app.route("/")
 def dashboard():
 
     try:
+
+        # ==========================================
+        # CHECK TOKEN
+        # ==========================================
 
         if ACCESS_TOKEN == "":
 
@@ -225,6 +84,11 @@ def dashboard():
             <h2>
             KITE_ACCESS_TOKEN Missing
             </h2>
+
+            <p>
+            Add today's access token
+            in Render Environment Variables.
+            </p>
 
             """
 
@@ -240,6 +104,10 @@ def dashboard():
             ACCESS_TOKEN
         )
 
+        # ==========================================
+        # VERIFY LOGIN
+        # ==========================================
+
         profile = kite.profile()
 
         user_name = profile.get(
@@ -248,515 +116,34 @@ def dashboard():
         )
 
         # ==========================================
-        # FETCH SENSEX DATA
+        # RUN STRATEGY ENGINE
         # ==========================================
 
-        to_date = datetime.now()
+        trades_df = run_strategy_engine(
 
-        from_date = (
-            to_date
-            - timedelta(days=10)
-        )
+            kite=kite,
 
-        data = kite.historical_data(
+            lot_size=LOT_SIZE,
 
-            instrument_token=265,
+            entry_cutoff=ENTRY_CUTOFF,
 
-            from_date=from_date,
+            squareoff_time=SQUAREOFF_TIME,
 
-            to_date=to_date,
+            trail_points=TRAIL_POINTS,
 
-            interval="5minute"
+            trail_activation=TRAIL_ACTIVATION,
 
-        )
+            stoploss_percent=STOPLOSS_PERCENT,
 
-        if not data:
+            backtest_days=BACKTEST_DAYS,
 
-            return """
+            interval=INTERVAL
 
-            <h2>
-            No Historical Data
-            </h2>
-
-            """
-
-        df = pd.DataFrame(data)
-
-        df["date"] = pd.to_datetime(
-            df["date"]
         )
 
         # ==========================================
-        # MARKET HOURS
+        # EMPTY CHECK
         # ==========================================
-
-        df["time"] = df[
-            "date"
-        ].dt.time
-
-        market_start = datetime.strptime(
-            "09:20",
-            "%H:%M"
-        ).time()
-
-        market_end = datetime.strptime(
-            "15:25",
-            "%H:%M"
-        ).time()
-
-        df = df[
-
-            (
-                df["time"]
-                >= market_start
-            )
-
-            &
-
-            (
-                df["time"]
-                <= market_end
-            )
-
-        ]
-
-        # ==========================================
-        # EMA
-        # ==========================================
-
-        df["EMA9"] = df[
-            "close"
-        ].ewm(
-            span=9,
-            adjust=False
-        ).mean()
-
-        df["EMA21"] = df[
-            "close"
-        ].ewm(
-            span=21,
-            adjust=False
-        ).mean()
-
-        df = df.dropna().reset_index(
-            drop=True
-        )
-
-        # ==========================================
-        # VARIABLES
-        # ==========================================
-
-        position = None
-
-        entry_price = 0
-
-        entry_time = None
-
-        current_strike = None
-
-        current_option = None
-
-        trades = []
-
-        highest_price = 0
-
-        trail_points = 20
-
-        trail_activation = 30
-
-        lot_size = 20
-
-        # ==========================================
-        # LOOP
-        # ==========================================
-
-        for i in range(1, len(df)):
-
-            prev = df.iloc[i - 1]
-
-            curr = df.iloc[i]
-
-            current_time = curr[
-                "date"
-            ].time()
-
-            # ==========================================
-            # ENTRY CUTOFF
-            # ==========================================
-
-            entry_cutoff = datetime.strptime(
-                "15:00",
-                "%H:%M"
-            ).time()
-
-            allow_entry = (
-
-                current_time
-                < entry_cutoff
-
-            )
-
-            # ==========================================
-            # FORCE EXIT
-            # ==========================================
-
-            squareoff_time = datetime.strptime(
-                "15:25",
-                "%H:%M"
-            ).time()
-
-            force_exit = (
-
-                current_time
-                >= squareoff_time
-
-            )
-
-            # ==========================================
-            # BUY SIGNAL
-            # ==========================================
-
-            buy_signal = (
-
-                curr["EMA9"]
-                > curr["EMA21"]
-
-                and
-
-                prev["EMA9"]
-                <= prev["EMA21"]
-
-            )
-
-            # ==========================================
-            # SELL SIGNAL
-            # ==========================================
-
-            sell_signal = (
-
-                curr["EMA9"]
-                < curr["EMA21"]
-
-                and
-
-                prev["EMA9"]
-                >= prev["EMA21"]
-
-            )
-
-            # ==========================================
-            # ENTRY
-            # ==========================================
-
-            if (
-
-                position is None
-
-                and
-
-                allow_entry
-
-            ):
-
-                current_strike = round(
-                    curr["close"] / 100
-                ) * 100
-
-                # ==========================================
-                # BUY CE
-                # ==========================================
-
-                if buy_signal:
-
-                    option_token = get_option_token(
-
-                        kite,
-                        current_strike,
-                        "CE"
-
-                    )
-
-                    if option_token is None:
-                        continue
-
-                    premium = get_option_price(
-
-                        kite,
-                        option_token,
-                        curr["date"]
-
-                    )
-
-                    if premium is None:
-                        continue
-
-                    position = "BUY_CE"
-
-                    current_option = option_token
-
-                    entry_price = premium
-
-                    entry_time = curr[
-                        "date"
-                    ]
-
-                    highest_price = premium
-
-                # ==========================================
-                # BUY PE
-                # ==========================================
-
-                elif sell_signal:
-
-                    option_token = get_option_token(
-
-                        kite,
-                        current_strike,
-                        "PE"
-
-                    )
-
-                    if option_token is None:
-                        continue
-
-                    premium = get_option_price(
-
-                        kite,
-                        option_token,
-                        curr["date"]
-
-                    )
-
-                    if premium is None:
-                        continue
-
-                    position = "BUY_PE"
-
-                    current_option = option_token
-
-                    entry_price = premium
-
-                    entry_time = curr[
-                        "date"
-                    ]
-
-                    highest_price = premium
-
-            # ==========================================
-            # ACTIVE POSITION
-            # ==========================================
-
-            elif position is not None:
-
-                current_premium = get_option_price(
-
-                    kite,
-                    current_option,
-                    curr["date"]
-
-                )
-
-                if current_premium is None:
-                    continue
-
-                # ==========================================
-                # TRACK HIGH
-                # ==========================================
-
-                highest_price = max(
-                    highest_price,
-                    current_premium
-                )
-
-                # ==========================================
-                # TRAILING ACTIVATION
-                # ==========================================
-
-                trail_active = (
-
-                    highest_price
-                    >= entry_price + trail_activation
-
-                )
-
-                if trail_active:
-
-                    trailing_sl = (
-                        highest_price
-                        - trail_points
-                    )
-
-                    trailing_hit = (
-
-                        current_premium
-                        <= trailing_sl
-
-                    )
-
-                else:
-
-                    trailing_hit = False
-
-                # ==========================================
-                # 15% SL
-                # ==========================================
-
-                sl_price = (
-                    entry_price * 0.85
-                )
-
-                hard_sl_hit = (
-
-                    current_premium
-                    <= sl_price
-
-                )
-
-                # ==========================================
-                # EXIT
-                # ==========================================
-
-                if (
-
-                    force_exit
-
-                    or
-
-                    trailing_hit
-
-                    or
-
-                    hard_sl_hit
-
-                ):
-
-                    exit_price = current_premium
-
-                    pnl = (
-                        exit_price
-                        - entry_price
-                    )
-
-                    profit_amount = round(
-                        pnl * lot_size,
-                        2
-                    )
-
-                    trades.append({
-
-                        "trade":
-                        position,
-
-                        "strike":
-                        current_strike,
-
-                        "entry_time":
-                        entry_time,
-
-                        "exit_time":
-                        curr["date"],
-
-                        "entry_premium":
-                        round(
-                            entry_price,
-                            2
-                        ),
-
-                        "exit_premium":
-                        round(
-                            exit_price,
-                            2
-                        ),
-
-                        "points":
-                        round(
-                            pnl,
-                            2
-                        ),
-
-                        "profit_amount":
-                        profit_amount,
-
-                        "exit_reason":
-
-                        "DAY END"
-                        if force_exit
-
-                        else
-
-                        "TRAIL SL"
-                        if trailing_hit
-
-                        else
-
-                        "15% SL"
-                    })
-
-                    # ==========================================
-                    # REVERSE ENTRY
-                    # ==========================================
-
-                    if hard_sl_hit and allow_entry:
-
-                        reverse_type = (
-
-                            "PE"
-                            if position == "BUY_CE"
-                            else "CE"
-
-                        )
-
-                        reverse_token = get_option_token(
-
-                            kite,
-                            current_strike,
-                            reverse_type
-
-                        )
-
-                        reverse_price = get_option_price(
-
-                            kite,
-                            reverse_token,
-                            curr["date"]
-
-                        )
-
-                        if reverse_price is not None:
-
-                            position = (
-
-                                "BUY_PE"
-                                if reverse_type == "PE"
-                                else "BUY_CE"
-
-                            )
-
-                            current_option = reverse_token
-
-                            entry_price = reverse_price
-
-                            entry_time = curr[
-                                "date"
-                            ]
-
-                            highest_price = reverse_price
-
-                        else:
-
-                            position = None
-
-                    else:
-
-                        position = None
-
-        # ==========================================
-        # RESULTS
-        # ==========================================
-
-        trades_df = pd.DataFrame(
-            trades
-        )
 
         if trades_df.empty:
 
@@ -784,10 +171,6 @@ def dashboard():
         # STATS
         # ==========================================
 
-        total_profit = trades_df[
-            "profit_amount"
-        ].sum()
-
         total_trades = len(
             trades_df
         )
@@ -802,12 +185,21 @@ def dashboard():
 
         )
 
+        losses = (
+            total_trades
+            - wins
+        )
+
+        total_profit = trades_df[
+            "profit_amount"
+        ].sum()
+
         win_rate = (
             wins / total_trades
         ) * 100
 
         # ==========================================
-        # EXPORT
+        # EXPORT EXCEL
         # ==========================================
 
         excel_file = (
@@ -815,12 +207,15 @@ def dashboard():
         )
 
         trades_df.to_excel(
+
             excel_file,
+
             index=False
+
         )
 
         # ==========================================
-        # REPORT
+        # HTML REPORT
         # ==========================================
 
         return f"""
@@ -828,6 +223,8 @@ def dashboard():
         <div style="
         font-family:sans-serif;
         padding:30px;
+        max-width:900px;
+        margin:auto;
         ">
 
         <h1>
@@ -849,6 +246,11 @@ def dashboard():
         <p>
         <b>Winning Trades:</b>
         {wins}
+        </p>
+
+        <p>
+        <b>Losing Trades:</b>
+        {losses}
         </p>
 
         <p>
@@ -883,31 +285,39 @@ def dashboard():
         """
 
 # ==========================================
-# DOWNLOAD
+# DOWNLOAD ROUTE
 # ==========================================
 
 @app.route("/download")
 def download_file():
 
     return send_file(
+
         "backtest_results.xlsx",
+
         as_attachment=True
+
     )
 
 # ==========================================
-# RUN
+# RUN APP
 # ==========================================
 
 if __name__ == "__main__":
 
     port = int(
+
         os.environ.get(
             "PORT",
             10000
         )
+
     )
 
     app.run(
+
         host="0.0.0.0",
+
         port=port
+
     )
