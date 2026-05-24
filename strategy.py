@@ -31,6 +31,8 @@ def run_strategy_engine(
 
 ):
 
+    print("STRATEGY ENGINE STARTED")
+
     # ==========================================
     # FETCH NIFTY DATA
     # ==========================================
@@ -53,6 +55,8 @@ def run_strategy_engine(
         interval=interval
 
     )
+
+    print("CANDLES FETCHED:", len(data))
 
     if not data:
 
@@ -101,6 +105,8 @@ def run_strategy_engine(
         )
 
     ]
+
+    print("MARKET CANDLES:", len(df))
 
     # ==========================================
     # EMA
@@ -181,7 +187,7 @@ def run_strategy_engine(
         )
 
         # ==========================================
-        # EMA SIGNALS
+        # SIGNALS
         # ==========================================
 
         buy_signal = (
@@ -209,7 +215,7 @@ def run_strategy_engine(
         )
 
         # ==========================================
-        # ENTRY LOGIC
+        # ENTRY
         # ==========================================
 
         if (
@@ -222,10 +228,6 @@ def run_strategy_engine(
 
         ):
 
-            # ==========================================
-            # NIFTY 50-POINT STRIKE
-            # ==========================================
-
             strike = int(
 
                 round(
@@ -234,11 +236,15 @@ def run_strategy_engine(
 
             )
 
+            print("CURRENT STRIKE:", strike)
+
             # ==========================================
             # BUY CE
             # ==========================================
 
             if buy_signal:
+
+                print("BUY SIGNAL GENERATED")
 
                 option_token = get_option_token(
 
@@ -248,7 +254,13 @@ def run_strategy_engine(
 
                 )
 
+                print(
+                    "OPTION TOKEN:",
+                    option_token
+                )
+
                 if option_token is None:
+
                     continue
 
                 premium = get_option_price(
@@ -259,7 +271,13 @@ def run_strategy_engine(
 
                 )
 
+                print(
+                    "PREMIUM:",
+                    premium
+                )
+
                 if premium is None:
+
                     continue
 
                 position = "BUY_CE"
@@ -277,8 +295,7 @@ def run_strategy_engine(
                 highest_price = premium
 
                 print(
-                    "BUY CE ENTRY:",
-                    premium
+                    "BUY CE ENTRY SUCCESS"
                 )
 
             # ==========================================
@@ -286,6 +303,8 @@ def run_strategy_engine(
             # ==========================================
 
             elif sell_signal:
+
+                print("SELL SIGNAL GENERATED")
 
                 option_token = get_option_token(
 
@@ -295,7 +314,13 @@ def run_strategy_engine(
 
                 )
 
+                print(
+                    "OPTION TOKEN:",
+                    option_token
+                )
+
                 if option_token is None:
+
                     continue
 
                 premium = get_option_price(
@@ -306,7 +331,13 @@ def run_strategy_engine(
 
                 )
 
+                print(
+                    "PREMIUM:",
+                    premium
+                )
+
                 if premium is None:
+
                     continue
 
                 position = "BUY_PE"
@@ -324,12 +355,11 @@ def run_strategy_engine(
                 highest_price = premium
 
                 print(
-                    "BUY PE ENTRY:",
-                    premium
+                    "BUY PE ENTRY SUCCESS"
                 )
 
         # ==========================================
-        # ACTIVE TRADE
+        # ACTIVE POSITION
         # ==========================================
 
         elif position is not None:
@@ -342,7 +372,13 @@ def run_strategy_engine(
 
             )
 
+            print(
+                "CURRENT PREMIUM:",
+                current_premium
+            )
+
             if current_premium is None:
+
                 continue
 
             # ==========================================
@@ -407,7 +443,7 @@ def run_strategy_engine(
             )
 
             # ==========================================
-            # EXIT LOGIC
+            # EXIT
             # ==========================================
 
             if (
@@ -423,6 +459,8 @@ def run_strategy_engine(
                 hard_sl_hit
 
             ):
+
+                print("EXIT TRIGGERED")
 
                 exit_price = current_premium
 
@@ -440,11 +478,6 @@ def run_strategy_engine(
 
                     2
 
-                )
-
-                print(
-                    "EXIT:",
-                    exit_price
                 )
 
                 trades.append({
@@ -520,12 +553,22 @@ def run_strategy_engine(
 
                     )
 
+                    print(
+                        "REVERSING TO:",
+                        reverse_type
+                    )
+
                     reverse_token = get_option_token(
 
                         kite,
                         entry_strike,
                         reverse_type
 
+                    )
+
+                    print(
+                        "REVERSE TOKEN:",
+                        reverse_token
                     )
 
                     if reverse_token is not None:
@@ -536,6 +579,11 @@ def run_strategy_engine(
                             reverse_token,
                             curr["date"]
 
+                        )
+
+                        print(
+                            "REVERSE PREMIUM:",
+                            reverse_price
                         )
 
                         if reverse_price is not None:
@@ -559,8 +607,7 @@ def run_strategy_engine(
                             highest_price = reverse_price
 
                             print(
-                                "REVERSE ENTRY:",
-                                reverse_price
+                                "REVERSE ENTRY SUCCESS"
                             )
 
                         else:
@@ -578,6 +625,8 @@ def run_strategy_engine(
     # ==========================================
     # FINAL DATAFRAME
     # ==========================================
+
+    print("TOTAL TRADES:", len(trades))
 
     trades_df = pd.DataFrame(
         trades
