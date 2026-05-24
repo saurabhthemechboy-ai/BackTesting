@@ -33,35 +33,6 @@ API_SECRET = os.getenv(
 ).strip()
 
 # ==========================================
-# LOAD INSTRUMENTS ONLY ONCE
-# ==========================================
-
-def load_instruments(kite):
-
-    global OPTION_CACHE
-
-    if OPTION_CACHE is None:
-
-        print(
-            "LOADING NFO INSTRUMENTS..."
-        )
-
-        instruments = kite.instruments(
-            "NFO"
-        )
-
-        OPTION_CACHE = pd.DataFrame(
-            instruments
-        )
-
-        print(
-            "INSTRUMENTS LOADED:",
-            len(OPTION_CACHE)
-        )
-
-    return OPTION_CACHE
-
-# ==========================================
 # HOME PAGE
 # ==========================================
 
@@ -150,26 +121,13 @@ def callback():
             "ACCESS_TOKEN"
         ] = access_token
 
-        return """
+        # ==========================================
+        # AUTO OPEN DASHBOARD
+        # ==========================================
 
-        <div style="
-        font-family:sans-serif;
-        padding:40px;
-        ">
-
-        <h1>
-        ✅ LOGIN SUCCESSFUL
-        </h1>
-
-        <br>
-
-        <a href="/dashboard">
-        OPEN BACKTEST
-        </a>
-
-        </div>
-
-        """
+        return redirect(
+            "/dashboard"
+        )
 
     except Exception as e:
 
@@ -187,7 +145,7 @@ def callback():
 # ==========================================
 
 @app.route("/dashboard")
-def home():
+def dashboard():
 
     try:
 
@@ -237,7 +195,7 @@ def home():
         )
 
         # ==========================================
-        # FETCH SENSEX DATA
+        # FETCH DATA
         # ==========================================
 
         to_date = datetime.now()
