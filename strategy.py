@@ -252,6 +252,7 @@ def run_strategy_engine(
                 )
 
                 if premium is None:
+                    premium = 100
                     continue
 
                 position = "BUY_CE"
@@ -294,6 +295,7 @@ def run_strategy_engine(
                 )
 
                 if premium is None:
+                    premium = 100
                     continue
 
                 position = "BUY_PE"
