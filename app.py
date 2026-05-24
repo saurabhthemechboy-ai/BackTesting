@@ -62,6 +62,34 @@ def load_instruments(kite):
     return OPTION_CACHE
 
 # ==========================================
+# HOME PAGE
+# ==========================================
+
+@app.route("/")
+def index():
+
+    return """
+
+    <div style="
+    font-family:sans-serif;
+    padding:40px;
+    ">
+
+    <h1>
+    📊 SENSEX BACKTEST ENGINE
+    </h1>
+
+    <br>
+
+    <a href="/login">
+    🔑 LOGIN TO ZERODHA
+    </a>
+
+    </div>
+
+    """
+
+# ==========================================
 # LOGIN
 # ==========================================
 
@@ -115,17 +143,12 @@ def callback():
         ]
 
         # ==========================================
-        # SAVE TOKEN
+        # SAVE TOKEN IN APP MEMORY
         # ==========================================
 
-        with open(
-            "/tmp/access_token.txt",
-            "w"
-        ) as f:
-
-            f.write(
-                access_token
-            )
+        app.config[
+            "ACCESS_TOKEN"
+        ] = access_token
 
         return """
 
@@ -138,13 +161,9 @@ def callback():
         ✅ LOGIN SUCCESSFUL
         </h1>
 
-        <p>
-        Access token generated successfully.
-        </p>
-
         <br>
 
-        <a href="/">
+        <a href="/dashboard">
         OPEN BACKTEST
         </a>
 
@@ -164,30 +183,35 @@ def callback():
         """
 
 # ==========================================
-# HOME
+# DASHBOARD
 # ==========================================
 
-@app.route("/")
+@app.route("/dashboard")
 def home():
 
     try:
 
         # ==========================================
-        # READ TOKEN
+        # ACCESS TOKEN
         # ==========================================
 
-        try:
+        access_token = app.config.get(
+            "ACCESS_TOKEN"
+        )
 
-            with open(
-                "/tmp/access_token.txt",
-                "r"
-            ) as f:
+        if not access_token:
 
-                access_token = f.read().strip()
+            return """
 
-        except:
+            <h2>
+            Session expired
+            </h2>
 
-            return redirect("/login")
+            <a href="/login">
+            LOGIN AGAIN
+            </a>
+
+            """
 
         # ==========================================
         # CONNECT KITE
@@ -760,7 +784,7 @@ def home():
         # ==========================================
 
         excel_file = (
-            "/tmp/backtest_results.xlsx"
+            "backtest_results.xlsx"
         )
 
         trades_df.to_excel(
@@ -848,7 +872,7 @@ def home():
 def download_file():
 
     return send_file(
-        "/tmp/backtest_results.xlsx",
+        "backtest_results.xlsx",
         as_attachment=True
     )
 
