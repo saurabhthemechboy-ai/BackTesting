@@ -1,7 +1,5 @@
 flask
-gunicorn
-kiteconnect
 pandas
-requests
 openpyxl
-Flask-Session
+kiteconnect
+gunicorn
