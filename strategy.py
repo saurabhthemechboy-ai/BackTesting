@@ -148,26 +148,14 @@ def run_strategy_engine(
 
         curr = df.iloc[i]
 
-        current_time = curr[
-            "date"
-        ].time()
-
         # ==========================================
-        # TIME RULES
+        # FORCE ENTRY ENABLE
         # ==========================================
 
-        allow_entry = (
-
-            current_time
-            < datetime.strptime(
-                entry_cutoff,
-                "%H:%M"
-            ).time()
-
-        )
+        allow_entry = True
 
         # ==========================================
-        # SIMPLE SIGNALS
+        # SIMPLE EMA SIGNALS
         # ==========================================
 
         buy_signal = (
@@ -197,6 +185,10 @@ def run_strategy_engine(
             allow_entry
 
         ):
+
+            # ==========================================
+            # SENSEX STRIKE
+            # ==========================================
 
             strike = int(
 
@@ -231,6 +223,10 @@ def run_strategy_engine(
                         curr["date"]
 
                     )
+
+                # ==========================================
+                # FALLBACK PREMIUM
+                # ==========================================
 
                 if premium is None:
 
@@ -278,6 +274,10 @@ def run_strategy_engine(
 
                     )
 
+                # ==========================================
+                # FALLBACK PREMIUM
+                # ==========================================
+
                 if premium is None:
 
                     premium = (
@@ -316,6 +316,10 @@ def run_strategy_engine(
 
                 )
 
+            # ==========================================
+            # FALLBACK CURRENT PREMIUM
+            # ==========================================
+
             if current_premium is None:
 
                 current_premium = (
@@ -325,7 +329,7 @@ def run_strategy_engine(
                 )
 
             # ==========================================
-            # QUICK EXIT
+            # EXIT
             # ==========================================
 
             exit_price = current_premium
