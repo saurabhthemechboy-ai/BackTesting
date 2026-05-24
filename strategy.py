@@ -46,7 +46,7 @@ def run_strategy_engine(
 
     data = kite.historical_data(
 
-        instrument_token=260105,
+        instrument_token=99926009,
 
         from_date=from_date,
 
