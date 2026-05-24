@@ -1,7 +1,5 @@
 import pandas as pd
 
-from datetime import timedelta
-
 # ==========================================
 # GLOBAL CACHE
 # ==========================================
@@ -56,14 +54,14 @@ def get_option_token(
         )
 
         # ==========================================
-        # FILTER NIFTY OPTIONS
+        # BANKNIFTY FILTER
         # ==========================================
 
         df = instruments_df[
 
             instruments_df[
                 "name"
-            ] == "NIFTY"
+            ] == "BANKNIFTY"
 
         ]
 
@@ -80,7 +78,7 @@ def get_option_token(
         ]
 
         # ==========================================
-        # STRIKE MATCH
+        # STRIKE
         # ==========================================
 
         df = df[
@@ -128,117 +126,6 @@ def get_option_token(
 
         print(
             "OPTION TOKEN ERROR:",
-            str(e)
-        )
-
-        return None
-
-# ==========================================
-# GET REAL OPTION PREMIUM
-# ==========================================
-
-def get_option_price(
-
-    kite,
-    option_token,
-    candle_time
-
-):
-
-    try:
-
-        # ==========================================
-        # FULL DAY FETCH
-        # ==========================================
-
-        start_day = candle_time.replace(
-
-            hour=9,
-            minute=15,
-            second=0
-
-        )
-
-        end_day = candle_time.replace(
-
-            hour=15,
-            minute=30,
-            second=0
-
-        )
-
-        candles = kite.historical_data(
-
-            instrument_token=option_token,
-
-            from_date=start_day,
-
-            to_date=end_day,
-
-            interval="5minute"
-
-        )
-
-        if not candles:
-
-            print(
-                "NO OPTION CANDLES"
-            )
-
-            return None
-
-        option_df = pd.DataFrame(
-            candles
-        )
-
-        option_df["date"] = pd.to_datetime(
-            option_df["date"]
-        )
-
-        # ==========================================
-        # REMOVE TIMEZONE
-        # ==========================================
-
-        option_df["date"] = option_df[
-            "date"
-        ].dt.tz_localize(None)
-
-        candle_time = pd.to_datetime(
-            candle_time
-        ).tz_localize(None)
-
-        # ==========================================
-        # FIND NEAREST CANDLE
-        # ==========================================
-
-        option_df["time_diff"] = (
-
-            option_df["date"]
-            - candle_time
-
-        ).abs()
-
-        nearest = option_df.sort_values(
-
-            by="time_diff"
-
-        ).iloc[0]
-
-        premium_price = float(
-            nearest["close"]
-        )
-
-        print(
-            "PREMIUM PRICE:",
-            premium_price
-        )
-
-        return premium_price
-
-    except Exception as e:
-
-        print(
-            "OPTION PRICE ERROR:",
             str(e)
         )
 
