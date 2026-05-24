@@ -57,7 +57,7 @@ def get_option_token(
 
             instruments_df[
                 "name"
-            ] == "BANKNIFTY"
+            ] == "SENSEX"
 
         ]
 
