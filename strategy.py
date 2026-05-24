@@ -253,8 +253,7 @@ def run_strategy_engine(
 
                 if premium is None:
                     premium = 100
-                    continue
-
+                   
                 position = "BUY_CE"
 
                 entry_price = premium
@@ -296,8 +295,7 @@ def run_strategy_engine(
 
                 if premium is None:
                     premium = 100
-                    continue
-
+                   
                 position = "BUY_PE"
 
                 entry_price = premium
@@ -327,7 +325,8 @@ def run_strategy_engine(
             )
 
             if current_premium is None:
-                continue
+
+                current_premium = entry_price
 
             # ==========================================
             # TRACK HIGH
